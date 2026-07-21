@@ -680,3 +680,56 @@ This log records the actual development process and must not contain fabricated 
 - `npm run typecheck` passed across all workspaces.
 - `npm run test` passed: 20 test files and 82 tests.
 - The CLI package build passed.
+
+---
+
+## Frontend Motion and Interaction Polish - 2026-07-22
+
+- Added a CSS- and SVG-first motion layer to the existing public landing page
+  and control plane without adding a runtime animation dependency or changing
+  validation, persistence, API, or health behavior.
+- The landing now uses progressive one-time section reveals through a small
+  `IntersectionObserver` client component. Content remains visible without
+  JavaScript or observer support, and landing controls, scenario cards,
+  workflow steps, capability cards, and pipeline nodes have restrained hover
+  and entry transitions.
+- The control plane now has page and section entry transitions, staggered
+  metrics, tables and activity rows, navigation feedback, finite connection
+  feedback, health-chart line and point motion, graph edge drawing, graph-node
+  settling, bar fills, and modal/detail transitions. These effects describe
+  real persisted state; they do not imply that the UI makes enforcement
+  decisions.
+- Added global `prefers-reduced-motion` handling that disables animation,
+  transitions, and smooth scrolling across the landing and control plane.
+- Updated the Architecture view so each graph lays out only modules connected
+  to the persisted edges it displays. The intended graph now focuses on
+  Checkout -> Gateway -> Database, while the actual graph retains every
+  persisted runtime edge and highlights the deterministic unauthorized edge.
+- A local developer connection file can exist under the ignored ecommerce
+  fixture. CLI tests now exclude that local telemetry file when creating test
+  copies, so a developer's control-plane connection cannot make deterministic
+  tests unexpectedly network-backed.
+
+### Problems and debugging
+
+- A temporary production preview launched before a subsequent build referenced
+  stale hashed CSS assets. Restarting the local preview after the build restored
+  the current assets; this was a local verification ordering issue, not an
+  application or persisted-data change.
+- Initial graph-node animation used a fully transparent starting state. When a
+  persisted graph arrived late, the final staggered node could briefly be hard
+  to inspect. The motion now uses a small scale settle while keeping nodes
+  readable throughout the transition.
+
+### Verification
+
+- Inspected fresh production-mode screenshots for the public landing and the
+  PostgreSQL-backed Architecture page. The landing rendered its product story
+  and calls to action correctly. The Architecture view rendered the declared
+  Checkout -> Gateway -> Database route alongside the actual persisted drift
+  graph, including its highlighted Checkout -> Database edge.
+- `npm run lint` passed.
+- `npm run typecheck` passed across all workspaces.
+- `npm run test` passed: 20 test files and 82 tests.
+- `npm run build` passed for contracts, engine, CLI, and the Next.js control
+  plane.
