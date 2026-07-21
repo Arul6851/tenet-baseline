@@ -5,7 +5,10 @@ import { resolve } from "node:path";
 import { Command } from "commander";
 
 import { runCheckCommand } from "./check.js";
-import { runConnectCommand } from "./control-plane.js";
+import {
+  controlPlaneUrlFromCliOptions,
+  runConnectCommand,
+} from "./control-plane.js";
 
 const foundationNotice = (command: string): void => {
   console.log(
@@ -34,7 +37,8 @@ program
   .option("--repo <path>", "Repository root to connect", ".")
   .action(
     async (options: {
-      url: string;
+      controlPlaneUrl?: string;
+      url?: string;
       repository: string;
       token?: string;
       repo: string;
@@ -42,7 +46,7 @@ program
       const invocationDirectory = process.env.INIT_CWD ?? process.cwd();
       const exitCode = await runConnectCommand({
         repositoryPath: resolve(invocationDirectory, options.repo),
-        controlPlaneUrl: options.url,
+        controlPlaneUrl: controlPlaneUrlFromCliOptions(options),
         repositorySlug: options.repository,
         ...(options.token === undefined ? {} : { token: options.token }),
       });

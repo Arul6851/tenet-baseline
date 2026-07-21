@@ -2,9 +2,11 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { Command } from "commander";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  controlPlaneUrlFromCliOptions,
   controlPlaneConfigPath,
   loadControlPlaneConnectionConfig,
   runConnectCommand,
@@ -27,6 +29,25 @@ afterEach(async () => {
 });
 
 describe("tenet connect", () => {
+  it("maps the --url alias to Commander's controlPlaneUrl option", () => {
+    const command = new Command()
+      .requiredOption("--url, --control-plane-url <url>", "Control-plane base URL")
+      .requiredOption("--repository <slug>", "Control-plane repository slug");
+
+    command.parse([
+      "node",
+      "tenet",
+      "--url",
+      "http://localhost:3000",
+      "--repository",
+      "commerce-platform",
+    ]);
+
+    expect(controlPlaneUrlFromCliOptions(command.opts())).toBe(
+      "http://localhost:3000",
+    );
+  });
+
   it("writes an ignored local control-plane connection configuration", async () => {
     const repositoryRoot = await createRepository();
     const lines: string[] = [];

@@ -35,6 +35,24 @@ export interface ConnectCommandOptions {
   token?: string;
 }
 
+/**
+ * Commander names this paired option after its long alias
+ * (`controlPlaneUrl`), even when a caller supplied `--url`. The fallback
+ * keeps the command resilient to a manually constructed options object.
+ */
+export const controlPlaneUrlFromCliOptions = (options: {
+  controlPlaneUrl?: string;
+  url?: string;
+}): string => {
+  const controlPlaneUrl = options.controlPlaneUrl ?? options.url;
+
+  if (controlPlaneUrl === undefined) {
+    throw new Error("Control-plane URL is required.");
+  }
+
+  return controlPlaneUrl;
+};
+
 export interface ConnectTerminalOutput {
   log(message: string): void;
   error(message: string): void;
