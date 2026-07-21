@@ -124,7 +124,7 @@ export const ProductShell = ({
         : "Checking control plane";
 
   return (
-    <div className="product-shell">
+    <div className={`product-shell product-shell--${connectionState}`}>
       <a className="skip-link" href="#control-plane-content">
         Skip to content
       </a>
@@ -153,6 +153,7 @@ export const ProductShell = ({
             <a
               aria-current={item.id === activePage ? "page" : undefined}
               className={`nav-link ${item.id === activePage ? "is-active" : ""}`}
+              data-active={item.id === activePage ? "true" : undefined}
               href={item.href}
               key={item.id}
             >

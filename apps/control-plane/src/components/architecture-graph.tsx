@@ -1,4 +1,4 @@
-import { useId } from "react";
+import { useId, type CSSProperties } from "react";
 
 export interface ArchitectureGraphNode {
   id: string;
@@ -264,7 +264,7 @@ export function ArchitectureGraph({
             </marker>
           </defs>
 
-          {graphEdges.map((edge) => {
+          {graphEdges.map((edge, index) => {
             const source = nodesById.get(edge.sourceModule);
             const target = nodesById.get(edge.targetModule);
             if (!source || !target) {
@@ -285,6 +285,8 @@ export function ArchitectureGraph({
                   isUnauthorized ? "unauthorized" : "default"
                 })`}
                 aria-label={label}
+                pathLength={1}
+                style={{ "--motion-delay": `${index * 90}ms` } as CSSProperties}
                 tabIndex={0}
               >
                 <title>{label}</title>
@@ -292,12 +294,13 @@ export function ArchitectureGraph({
             );
           })}
 
-          {positionedNodes.map((node) => (
+          {positionedNodes.map((node, index) => (
             <g
               key={node.id}
               className="architecture-graph__node"
               tabIndex={0}
               aria-label={`${displayModule(node)} module`}
+              style={{ "--motion-delay": `${index * 110 + 140}ms` } as CSSProperties}
             >
               <title>{`${displayModule(node)} module`}</title>
               <rect x={node.x} y={node.y} width={nodeWidth} height={nodeHeight} rx="9" />

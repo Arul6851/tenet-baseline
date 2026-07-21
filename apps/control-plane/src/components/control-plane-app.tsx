@@ -513,12 +513,26 @@ const humanize = (value: string): string =>
 
 const graphEdgeKey = (source: string, target: string): string => `${source}->${target}`;
 
-const graphNodes = (snapshot: GraphSnapshot, intended = false): ArchitectureGraphNode[] => {
-  const nodes = intended
+const graphNodes = (
+  snapshot: GraphSnapshot,
+  intended = false,
+  displayedEdges: readonly ArchitectureGraphEdge[] = [],
+): ArchitectureGraphNode[] => {
+  const availableNodes = intended
     ? snapshot.intendedArchitecture.modules
     : snapshot.nodes.length > 0
       ? snapshot.nodes
       : snapshot.intendedArchitecture.modules;
+  const connectedNodeIds = new Set(
+    displayedEdges.flatMap((edge) => [edge.sourceModule, edge.targetModule]),
+  );
+  // Graph snapshots can include repository modules that have no relationship to
+  // the architecture being displayed. Keep the visualization focused on the
+  // declared or observed routes, while preserving all normalized edges below.
+  const nodes =
+    connectedNodeIds.size > 0
+      ? availableNodes.filter((node) => connectedNodeIds.has(node.id))
+      : availableNodes;
   return nodes.map((node) => ({
     id: node.id,
     ...(node.label === undefined ? {} : { label: node.label }),
@@ -635,7 +649,11 @@ const LifecycleBadge = ({ status }: { status: string }) => (
 
 const LoadingState = ({ page }: { page: ControlPlanePage }) => (
   <ProductShell activePage={page} connectionState="loading">
-    <div className="skeleton-page" aria-label="Loading persisted control-plane data" role="status">
+    <div
+      className="dashboard-page dashboard-page--loading skeleton-page"
+      aria-label="Loading persisted control-plane data"
+      role="status"
+    >
       <div className="skeleton-line short" />
       <div className="skeleton-line" />
       <div className="skeleton-grid">
@@ -658,7 +676,10 @@ const ErrorState = ({
   onRetry: () => void;
 }) => (
   <ProductShell activePage={page} connectionState="error">
-    <section className="error-state" aria-labelledby="control-plane-error-title">
+    <section
+      className="dashboard-page dashboard-page--error error-state"
+      aria-labelledby="control-plane-error-title"
+    >
       <div className="error-state-content">
         <div aria-hidden="true" className="state-symbol">!</div>
         <p className="eyebrow">Operational status</p>
@@ -729,20 +750,34 @@ const DashboardPage = ({
   page: ControlPlanePage;
   onRefresh: () => void;
 }) => {
+  let content: ReactNode;
+
   switch (page) {
     case "architecture":
-      return <ArchitecturePage data={data} />;
+      content = <ArchitecturePage data={data} />;
+      break;
     case "tenets":
-      return <TenetsPage data={data} onRefresh={onRefresh} />;
+      content = <TenetsPage data={data} onRefresh={onRefresh} />;
+      break;
     case "violations":
-      return <ViolationsPage data={data} />;
+      content = <ViolationsPage data={data} />;
+      break;
     case "changes":
-      return <ChangesPage data={data} />;
+      content = <ChangesPage data={data} />;
+      break;
     case "analytics":
-      return <AnalyticsPage data={data} />;
+      content = <AnalyticsPage data={data} />;
+      break;
     default:
-      return <OverviewPage data={data} />;
+      content = <OverviewPage data={data} />;
+      break;
   }
+
+  return (
+    <div className={`dashboard-page dashboard-page--${page}`} key={page}>
+      {content}
+    </div>
+  );
 };
 
 const MetricCard = ({
@@ -762,7 +797,7 @@ const MetricCard = ({
   const deltaLabel =
     delta === 0 ? "No change from the prior run" : `${delta > 0 ? "+" : ""}${delta} from the prior run`;
   return (
-    <article className={`metric-card ${kind}`}>
+    <article className={`metric-card motion-card ${kind}`}>
       <div className="metric-heading">
         <span className="metric-label">{label}</span>
         <span className={`metric-status ${state}`}>{state === "good" ? "Compliant" : state === "block" ? "Blocked" : "At risk"}</span>
@@ -784,8 +819,12 @@ const MetricCard = ({
 
 const ActivityTimeline = ({ activities }: { activities: readonly ActivityItem[] }) => (
   <ol className="timeline">
-    {activities.map((activity) => (
-      <li className="timeline-item" key={activity.id}>
+    {activities.map((activity, index) => (
+      <li
+        className="timeline-item motion-row"
+        key={activity.id}
+        style={{ animationDelay: `${Math.min(index, 7) * 55}ms` }}
+      >
         <span aria-hidden="true" className={`timeline-marker ${statusClass(activity.status)}`} />
         <div className="timeline-content">
           <div className="timeline-heading">
@@ -890,11 +929,12 @@ const OverviewPage = ({ data }: { data: DashboardViewData }) => {
               <p className="panel-subtitle">No resolved violation records have been persisted yet.</p>
             ) : (
               <div className="violation-list">
-                {resolved.map((violation) => (
+                {resolved.map((violation, index) => (
                   <a
-                    className={`violation-summary ${violation.type}`}
+                    className={`violation-summary motion-row ${violation.type}`}
                     href="/violations"
                     key={violation.id}
+                    style={{ animationDelay: `${Math.min(index, 7) * 55}ms` }}
                   >
                     <span aria-hidden="true" className="violation-summary-line" />
                     <span className="violation-summary-copy">
@@ -981,6 +1021,7 @@ const ArchitecturePage = ({ data }: { data: DashboardViewData }) => {
       flaggedDependencyKeys.add(graphEdgeKey(source, target));
     }
   }
+  const intendedEdges = selectedGraph ? graphEdges(selectedGraph, true) : [];
   const actualEdges = selectedGraph
     ? graphEdges(selectedGraph, false, flaggedDependencyKeys)
     : [];
@@ -1049,8 +1090,9 @@ const ArchitecturePage = ({ data }: { data: DashboardViewData }) => {
                 </div>
               </header>
               <ArchitectureGraph
-                edges={graphEdges(selectedGraph, true)}
-                nodes={graphNodes(selectedGraph, true)}
+                edges={intendedEdges}
+                key={`intended-${selectedRun.id}`}
+                nodes={graphNodes(selectedGraph, true, intendedEdges)}
                 title="Intended architecture"
               />
             </article>
@@ -1066,7 +1108,8 @@ const ArchitecturePage = ({ data }: { data: DashboardViewData }) => {
               <ArchitectureGraph
                 edges={actualEdges}
                 emphasizedUnauthorized
-                nodes={graphNodes(selectedGraph)}
+                key={`actual-${selectedRun.id}`}
+                nodes={graphNodes(selectedGraph, false, actualEdges)}
                 title="Actual architecture"
               />
             </article>

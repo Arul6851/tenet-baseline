@@ -1,6 +1,7 @@
 import React, { type ReactNode } from "react";
 
 import { BrandMark } from "./brand-mark";
+import { LandingMotion } from "./landing-motion";
 import {
   landingCapabilities,
   landingHistory,
@@ -25,7 +26,8 @@ const RouteNode = ({
 
 export function LandingPage() {
   return (
-    <div className="landing-page">
+    <div className="landing-page" data-landing-root>
+      <LandingMotion />
       <a className="skip-link" href="#landing-content">Skip to content</a>
 
       <header className="landing-nav-wrap">
@@ -90,11 +92,11 @@ export function LandingPage() {
 
         <section aria-label="Validator-generated demo history" className="landing-history">
           <div className="landing-container">
-            <div className="landing-history-heading">
+            <div className="landing-history-heading" data-landing-reveal>
               <p className="landing-kicker"><span aria-hidden="true" /> Real demo history</p>
               <p>Five validator-generated states persisted by the control plane.</p>
             </div>
-            <ol className="landing-history-list">
+            <ol className="landing-history-list" data-landing-reveal="group">
               {landingHistory.map((run) => (
                 <li className={`landing-history-run ${run.status.toLowerCase()}`} key={run.label}>
                   <span className="landing-history-index">Run {run.label}</span>
@@ -110,13 +112,13 @@ export function LandingPage() {
 
         <section className="landing-section" id="scenarios">
           <div className="landing-container">
-            <header className="landing-section-heading">
+            <header className="landing-section-heading" data-landing-reveal>
               <p className="landing-kicker"><span aria-hidden="true" /> The changes that get through anyway</p>
               <h2>Git sees a clean change.<br />Tenet sees the decision it breaks.</h2>
               <p>Two supported enforcement paths, both based on deterministic evidence from real TypeScript source.</p>
             </header>
 
-            <div className="landing-scenarios">
+            <div className="landing-scenarios" data-landing-reveal="group">
               <article className="landing-scenario architecture" id="architectural-drift">
                 <header className="landing-scenario-header">
                   <div>
@@ -170,14 +172,14 @@ export function LandingPage() {
 
         <section className="landing-section landing-workflow-section" id="how-it-works">
           <div className="landing-container">
-            <div className="landing-workflow-intro">
+            <div className="landing-workflow-intro" data-landing-reveal>
               <div>
                 <p className="landing-kicker"><span aria-hidden="true" /> From team decision to enforceable policy</p>
                 <h2>AI interprets.<br /><span>Tenet enforces.</span></h2>
               </div>
               <p>GPT-5.6 proposes supported structure and explains deterministic evidence. It never activates a Tenet automatically, overrides a validator, changes health, or independently blocks a change.</p>
             </div>
-            <ol className="landing-workflow-list">
+            <ol className="landing-workflow-list" data-landing-reveal="group">
               {landingWorkflow.map((step) => (
                 <li key={step.index}>
                   <span>{step.index}</span>
@@ -190,14 +192,14 @@ export function LandingPage() {
 
         <section className="landing-section landing-control-plane-section" id="control-plane">
           <div className="landing-container">
-            <header className="landing-section-heading split">
+            <header className="landing-section-heading split" data-landing-reveal>
               <div>
                 <p className="landing-kicker"><span aria-hidden="true" /> The record of intent</p>
                 <h2>Intent, made operational.</h2>
               </div>
               <p>The control plane is driven by actual PostgreSQL-backed validation history, health snapshots, graph snapshots, Tenets, and violation lifecycle evidence.</p>
             </header>
-            <div className="landing-capability-grid">
+            <div className="landing-capability-grid" data-landing-reveal="group">
               {landingCapabilities.map((capability) => (
                 <a className="landing-capability" href={capability.href} key={capability.title}>
                   <span>{capability.label}</span>
@@ -212,14 +214,14 @@ export function LandingPage() {
 
         <section className="landing-section landing-technical-section" id="technical">
           <div className="landing-container">
-            <header className="landing-section-heading split">
+            <header className="landing-section-heading split" data-landing-reveal>
               <div>
                 <p className="landing-kicker"><span aria-hidden="true" /> Built for the delivery path</p>
                 <h2>Evidence first.<br />Enforcement stays local.</h2>
               </div>
               <p>Repository source stays in deterministic analysis. Control-plane synchronization preserves results after local enforcement, never decides it.</p>
             </header>
-            <div className="landing-pipeline" aria-label="Tenet technical pipeline">
+            <div className="landing-pipeline" aria-label="Tenet technical pipeline" data-landing-reveal="group">
               <div className="landing-pipeline-lane deterministic">
                 <p>Authoritative enforcement path</p>
                 <ol>
@@ -240,7 +242,7 @@ export function LandingPage() {
         </section>
 
         <section className="landing-final-cta">
-          <div className="landing-container">
+          <div className="landing-container" data-landing-reveal>
             <p className="landing-kicker"><span aria-hidden="true" /> Intent is a control surface</p>
             <h2>Your architecture shouldn&apos;t exist only in a diagram.<br /><span>Make it enforceable.</span></h2>
             <a className="landing-button landing-button-primary" href="/overview">View Live Demo <Arrow /></a>

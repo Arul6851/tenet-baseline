@@ -1,4 +1,4 @@
-import { useId } from "react";
+import { useId, type CSSProperties } from "react";
 
 export type HealthMetric = "architecture" | "intent";
 
@@ -157,7 +157,12 @@ export function HealthChart({
             d={areaPath}
             fill={`url(#${titleId.replace(/[^a-zA-Z0-9_-]/g, "")}-fill)`}
           />
-          <path className="health-chart__line" d={linePath} fill="none" />
+          <path
+            className="health-chart__line"
+            d={linePath}
+            fill="none"
+            pathLength={1}
+          />
           {coordinates.map((coordinate, index) => {
             const point = series[index];
             if (!point) {
@@ -165,7 +170,11 @@ export function HealthChart({
             }
             const accessibleLabel = `${point.label}: ${metricLabel} Health ${coordinate.value} out of 100, validated ${formatValidatedAt(point.validatedAt)}`;
             return (
-              <g key={`${point.label}-${point.validatedAt}-${index}`}>
+              <g
+                className="health-chart__point-group"
+                key={`${point.label}-${point.validatedAt}-${index}`}
+                style={{ "--motion-delay": `${index * 85}ms` } as CSSProperties}
+              >
                 <circle
                   className="health-chart__point-hit-area"
                   cx={coordinate.x}
