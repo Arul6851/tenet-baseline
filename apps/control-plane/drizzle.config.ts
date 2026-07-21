@@ -20,11 +20,12 @@ const withRdsSslMode = (connectionString: string): string => {
   return url.toString();
 };
 
-// The fallback lets `drizzle-kit generate` run without a database. The
-// db:migrate wrapper requires a real DATABASE_URL before Drizzle is invoked.
+// The fallback lets `drizzle-kit generate` run without a database. It has no
+// credentials; the db:migrate wrapper requires a real DATABASE_URL before
+// Drizzle is invoked.
 const connectionString =
   process.env.DATABASE_URL ??
-  "postgresql://USERNAME:PASSWORD@localhost:5432/tenet";
+  "postgresql://localhost/tenet";
 
 export default defineConfig({
   schema: "./src/db/schema.ts",
