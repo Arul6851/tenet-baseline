@@ -88,3 +88,57 @@ This log records the actual development process and must not contain fabricated 
 - `npm run build` passed for contracts, engine, CLI, and the Next.js control
   plane.
 - `npm run db:generate` completed and generated the initial migration.
+
+---
+
+## Architectural Drift Enforcement - 2026-07-21
+
+- Implemented a local TypeScript repository analyzer with ts-morph. It loads
+  the target `tsconfig.json`, analyzes `.ts`, `.tsx`, `.mts`, and `.cts` files,
+  resolves local ESM imports and exports (including configured path aliases),
+  and assigns files to configured module path roots.
+- Added a normalized runtime dependency graph with source and target modules,
+  resolved files, import specifiers, and source locations. Type-only imports
+  are excluded. Dynamic and unresolved imports are retained as warnings rather
+  than blocking graph edges.
+- Implemented deterministic direct-dependency enforcement for the active
+  Checkout Persistence Boundary Tenet. A `checkout -> database` edge produces
+  one stable, blocking architecture violation, with the expected route,
+  observed dependency, affected file, and import evidence.
+- Connected analysis, architecture validation, health calculation, and status
+  derivation to `tenet check`. The ecommerce fixture declares the intended
+  `checkout -> gateway -> database` path and a safe temporary-overlay script
+  demonstrates the direct database dependency scenario.
+- Added real-fixture tests for compliant and drifting repositories, stable
+  fingerprints, duplicate imports, type-only imports, path aliases,
+  unresolved/dynamic imports, exact health deduction, and CLI exit behavior.
+
+### Architectural decisions
+
+- P0 architecture enforcement evaluates direct runtime dependencies only. One
+  unique `checkout -> database` boundary violation deducts 5 Architecture
+  Health points; repeated imports of the same edge do not compound the score.
+- The local CLI does not require `DATABASE_URL`; persistence is intentionally
+  deferred until the deterministic vertical slice is integrated with the
+  control plane.
+
+### Problems and debugging
+
+- Workspace scripts run from the package directory. `tenet check --repo` now
+  resolves relative paths from the original npm invocation directory so the
+  root demo command targets `examples/ecommerce` correctly.
+- The drift demo initially used top-level await under the repository's CommonJS
+  root package configuration. It now uses an explicit async entry function and
+  preserves the validator's intentional non-zero exit status.
+
+### Verification
+
+- `npm run lint` passed.
+- `npm run typecheck` passed across all workspaces.
+- `npm run test` passed: 4 test files and 14 tests.
+- `npm run build` passed for contracts, engine, CLI, and the Next.js control
+  plane.
+- `npm run demo:architecture:compliant` returned exit code 0 with Architecture
+  Health 100/100 and PASS.
+- `npm run demo:architecture:drift` returned exit code 1 with Architecture
+  Health 95/100, one blocking violation, and COMMIT BLOCKED.

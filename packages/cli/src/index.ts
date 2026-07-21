@@ -2,6 +2,8 @@
 
 import { Command } from "commander";
 
+import { runCheckCommand } from "./check.js";
+
 const foundationNotice = (command: string): void => {
   console.log(
     `tenet ${command} is wired into the foundation. Deterministic repository validation is the next implementation phase.`,
@@ -28,7 +30,15 @@ program
 program
   .command("check")
   .description("Run a local, non-persisted validation")
-  .action(() => foundationNotice("check"));
+  .option("--repo <path>", "Repository root to validate", ".")
+  .option("--config <path>", "Path to a Tenet configuration file")
+  .action(async (options: { repo: string; config?: string }) => {
+    const exitCode = await runCheckCommand({
+      repositoryPath: options.repo,
+      ...(options.config === undefined ? {} : { configPath: options.config }),
+    });
+    process.exitCode = exitCode;
+  });
 
 program
   .command("validate")
