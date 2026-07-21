@@ -1,7 +1,9 @@
 {
   "version": 1,
   "repository": {
-    "name": "tenet-ecommerce-demo"
+    "id": "commerce-platform",
+    "name": "commerce-platform",
+    "displayName": "acme/commerce-platform"
   },
   "tsconfig": "tsconfig.json",
   "architecture": {

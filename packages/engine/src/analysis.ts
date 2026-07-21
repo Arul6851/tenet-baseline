@@ -13,6 +13,7 @@ import {
 } from "ts-morph";
 
 import type {
+  AnalysisWarning as SharedAnalysisWarning,
   ArchitectureNode,
   DependencyEdge,
   DiscountFact,
@@ -24,18 +25,7 @@ export interface AnalysisRequest {
   modules: readonly ArchitectureNode[];
 }
 
-export interface AnalysisWarning {
-  kind:
-    | "dynamic_import"
-    | "unresolved_import"
-    | "unsupported_discount_declaration"
-    | "duplicate_discount_declaration";
-  file: string;
-  line: number;
-  column: number;
-  importSpecifier: string;
-  message: string;
-}
+export type AnalysisWarning = SharedAnalysisWarning;
 
 export interface RepositoryAnalysis {
   edges: readonly DependencyEdge[];
