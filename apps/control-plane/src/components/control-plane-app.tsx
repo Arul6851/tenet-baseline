@@ -1409,7 +1409,7 @@ const TenetProposalDialog = ({
           )}
         </div>
         <footer className="modal-footer">
-          {confirmationNotice ? <button className="button button-primary" onClick={onConfirmed} type="button">Done</button> : proposal ? <><button className="button button-secondary" onClick={() => setProposal(undefined)} type="button">Back to intent</button><button className="button button-primary" disabled={isConfirming} onClick={() => void confirmProposal()} type="button">{isConfirming ? "Confirming…" : "Confirm & Enforce"}</button></> : <><button className="button button-quiet" onClick={onClose} type="button">Cancel</button><button className="button button-primary" disabled={isSubmitting || !aiConfigured || intent.trim().length === 0} onClick={() => void requestProposal()} type="button">{isSubmitting ? "Interpreting…" : "Propose Tenet"}</button></>}
+          {confirmationNotice ? <button className="button button-primary" onClick={onConfirmed} type="button">Done</button> : proposal ? <><button className="button button-quiet" onClick={onClose} type="button">Cancel</button><button className="button button-secondary" onClick={() => setProposal(undefined)} type="button">Back to intent</button><button className="button button-primary" disabled={isConfirming} onClick={() => void confirmProposal()} type="button">{isConfirming ? "Confirming…" : "Confirm & Enforce"}</button></> : <><button className="button button-quiet" onClick={onClose} type="button">Cancel</button><button className="button button-primary" disabled={isSubmitting || !aiConfigured || intent.trim().length === 0} onClick={() => void requestProposal()} type="button">{isSubmitting ? "Interpreting…" : "Propose Tenet"}</button></>}
         </footer>
       </section>
     </div>

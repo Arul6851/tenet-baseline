@@ -2,8 +2,6 @@ import OpenAI from "openai";
 import { zodTextFormat } from "openai/helpers/zod";
 
 import {
-  DeveloperExplanationSchema,
-  IntentProposalSchema,
   type DeveloperExplanation,
   type DeveloperExplanationRequest,
   type IntentInterpreter,
@@ -11,6 +9,13 @@ import {
   type NaturalLanguageTenetInput,
   type ViolationExplainer,
 } from "@tenet/contracts";
+
+import {
+  normalizeOpenAiDeveloperExplanation,
+  normalizeOpenAiIntentProposal,
+  OpenAiDeveloperExplanationOutputSchema,
+  OpenAiIntentProposalOutputSchema,
+} from "./openai-output-schema";
 
 class AiServiceUnavailableError extends Error {
   public constructor(message: string) {
@@ -33,11 +38,26 @@ export const getAiAvailability = (): {
 
 const proposalInstructions = `
 You are Tenet's intent interpreter. Convert a natural-language engineering intent
-into a conservative structured Tenet proposal. Do not validate code, determine a
-PASS/WARN/BLOCK result, activate a tenet, or claim enforcement. Return only a
-proposal that requires explicit human confirmation. Preserve uncertainty in the
-assumptions field and choose only constraints that can be deterministically
-enforced by Tenet's current supported schemas.
+into one conservative structured Tenet proposal. Do not validate code, determine
+a PASS/WARN/BLOCK result, activate a Tenet, or claim enforcement. The system,
+not you, attaches the original intent, model identity, and required human
+confirmation metadata.
+
+Choose only constraints that Tenet can deterministically enforce. For a direct
+dependency boundary, use forbid_direct_dependency with lowercase module IDs and
+a requiredIntermediary when the user's intent explicitly names an intermediary;
+otherwise set requiredIntermediary to null. Do not construct a full route: the
+system derives it from source, intermediary, and target. For a combined-discount
+cap, use max_combined_discount with the stated percentage, the relevant stack
+group, and whether discounts must be combinable. Record any uncertainty or scope
+inference in assumptions so a human can reject the draft.
+
+For Tenet's current P0 policy vocabulary, use these identifiers exactly rather
+than friendly aliases: checkout, gateway, database, and customer. In particular,
+DatabaseGateway maps to gateway, and a customer-discount cap uses stackGroup
+customer (not customer-discounts). If an intent does not fit this supported
+vocabulary, state that limitation in assumptions rather than inventing a new
+deterministic policy identifier.
 `;
 
 const explanationInstructions = `
@@ -48,14 +68,17 @@ independent blocking decision. Give concise next steps that respect the declared
 tenet.
 `;
 
+export type OpenAiStructuredOutputClient = Pick<OpenAI, "responses">;
+
 export class OpenAiTenetService implements IntentInterpreter, ViolationExplainer {
-  private readonly client: OpenAI;
+  private readonly client: OpenAiStructuredOutputClient;
 
   public constructor(
     apiKey: string,
     private readonly model = defaultOpenAiModel,
+    client: OpenAiStructuredOutputClient = new OpenAI({ apiKey }),
   ) {
-    this.client = new OpenAI({ apiKey });
+    this.client = client;
   }
 
   async proposeTenet(input: NaturalLanguageTenetInput): Promise<IntentProposal> {
@@ -67,7 +90,10 @@ export class OpenAiTenetService implements IntentInterpreter, ViolationExplainer
         { role: "user", content: JSON.stringify(input) },
       ],
       text: {
-        format: zodTextFormat(IntentProposalSchema, "tenet_intent_proposal"),
+        format: zodTextFormat(
+          OpenAiIntentProposalOutputSchema,
+          "tenet_intent_proposal",
+        ),
       },
     });
 
@@ -75,7 +101,11 @@ export class OpenAiTenetService implements IntentInterpreter, ViolationExplainer
       throw new Error("OpenAI returned no structured Tenet proposal.");
     }
 
-    return IntentProposalSchema.parse(response.output_parsed);
+    return normalizeOpenAiIntentProposal(
+      response.output_parsed,
+      input.intent,
+      this.model,
+    );
   }
 
   async explainViolation(
@@ -90,7 +120,7 @@ export class OpenAiTenetService implements IntentInterpreter, ViolationExplainer
       ],
       text: {
         format: zodTextFormat(
-          DeveloperExplanationSchema,
+          OpenAiDeveloperExplanationOutputSchema,
           "deterministic_violation_explanation",
         ),
       },
@@ -100,7 +130,7 @@ export class OpenAiTenetService implements IntentInterpreter, ViolationExplainer
       throw new Error("OpenAI returned no structured violation explanation.");
     }
 
-    return DeveloperExplanationSchema.parse(response.output_parsed);
+    return normalizeOpenAiDeveloperExplanation(response.output_parsed);
   }
 }
 
