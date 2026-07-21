@@ -315,3 +315,109 @@ This log records the actual development process and must not contain fabricated 
 - `npm run test` passed: 5 test files and 25 tests.
 - `npm run build` passed for contracts, engine, CLI, and the Next.js control
   plane.
+
+---
+
+## AWS RDS Persistence Verification - 2026-07-21
+
+- Audited repository secret handling before connecting to the database. The
+  root `.env` is ignored and untracked. A legacy local credential-style
+  Drizzle fallback found during this review was replaced with a non-secret
+  placeholder. The final tracked-source scan found no non-placeholder
+  PostgreSQL connection strings or database credentials.
+- Verified the configured AWS RDS PostgreSQL instance is available with the
+  configured host and port. Direct PostgreSQL connectivity succeeded when TLS
+  was required.
+- Added RDS-aware connection-string normalization in the control plane and
+  Drizzle configuration. For an `*.rds.amazonaws.com` host with no explicit
+  SSL mode, Tenet uses `sslmode=require`; explicit SSL modes and non-RDS local
+  PostgreSQL URLs remain unchanged.
+- Applied the existing Drizzle migration against AWS RDS. The expected Tenet
+  schema was then present with 11 application tables.
+- Bootstrapped the real `commerce-platform` control-plane repository and its
+  two active deterministic Tenets through normal validation ingestion, rather
+  than manually inserting demo history.
+- Extended the persisted-history demo to capture real CLI synchronization
+  contexts and their original validated payloads, verify exact database-backed
+  read API results, verify graph and lifecycle evidence, repeat the exact
+  completed payload with the same idempotency key, and support `--resume` when
+  a prior real first run has already committed.
+- Added a CLI synchronization retry test and increased the post-validation
+  telemetry timeout from five to fifteen seconds. A single retry is attempted
+  only for transient delivery/abort errors and reuses the same idempotency key
+  and serialized deterministic payload. Local PASS/BLOCK status remains
+  authoritative regardless of synchronization outcome.
+- Added unit coverage for automatic RDS TLS handling while preserving explicit
+  SSL configuration and local PostgreSQL behavior.
+
+### Real persistence results
+
+- `/api/health` and all repository read APIs returned successful responses
+  from the running control plane backed by AWS RDS.
+- The real persisted history contains exactly five validation runs and five
+  health snapshots with no duplicate ingestion keys:
+  - Run 1: PASS, Architecture 100, Intent 100.
+  - Run 2: BLOCK, Architecture 95, Intent 100, with the Checkout-to-Database
+    architectural drift violation.
+  - Run 3: PASS, Architecture 100, Intent 100; the architectural violation
+    transitioned to resolved.
+  - Run 4: BLOCK, Architecture 100, Intent 0, with the deterministic 35%
+    combined-discount semantic violation against the 30% maximum.
+  - Run 5: PASS, Architecture 100, Intent 100; the semantic violation
+    transitioned to resolved.
+- Direct read-only PostgreSQL verification confirmed the exact Architecture
+  Health history `100, 95, 100, 100, 100` and Intent Health history
+  `100, 100, 100, 0, 100`. The values were persisted directly from engine
+  results, not recalculated in the API or database.
+- PostgreSQL contains one logical architectural violation and one logical
+  semantic violation. Both retain stable fingerprints, first/last seen values,
+  resolution timestamps, and deterministic evidence. The architectural record
+  retains Checkout-to-Database import evidence; the semantic record retains
+  the 30% maximum, 35% potential, and both discount declarations.
+- The architectural-drift run stores both intended
+  Checkout-to-Gateway-to-Database edges and the actual unauthorized
+  Checkout-to-Database graph edge in its JSON snapshot.
+- Re-submitting an already-persisted completed validation with the same client
+  idempotency key returned the existing logical run. Validation-run, health
+  snapshot, logical-violation, and graph-snapshot counts remained unchanged.
+  The demo now preserves the original validated payload for exact replay in a
+  future fresh history run.
+
+### Problems and debugging
+
+- The first real ingestion committed to PostgreSQL just after the CLI's
+  original five-second telemetry timeout. The local compliant result remained
+  correct, but the caller did not receive the receipt. This exposed a real
+  post-commit delivery case, not a deterministic-validation failure. The
+  longer timeout and same-key transient-delivery retry fix the client path;
+  the existing database uniqueness constraint keeps retries idempotent.
+- A read-only verification query initially multiplied row counts through a
+  diagnostic join. It was replaced with independent scalar counts before
+  recording results; direct PostgreSQL verification confirms five logical
+  validation runs rather than the multiplied diagnostic count.
+- The RDS endpoint required TLS. This was resolved in application and Drizzle
+  configuration without changing the PostgreSQL/Drizzle architecture.
+
+### Verification
+
+- `npm run db:migrate` completed successfully against AWS RDS.
+- `npm run demo:control-plane:history -- --resume` completed successfully
+  through real deterministic validation, the local HTTP API, and PostgreSQL.
+- The live read APIs returned a repository summary with no active violations,
+  five validation runs, two resolved logical violations, five health
+  snapshots, two active Tenets, and the persisted unauthorized graph edge.
+- A fresh compiled `next start` control plane process returned `/api/health`
+  and the repository summary successfully from AWS RDS, with final
+  Architecture and Intent Health both at 100 and no active violations.
+- `npm run demo:architecture:compliant` returned PASS at Architecture 100/100
+  and Intent 100/100.
+- `npm run demo:architecture:drift` returned the expected non-zero blocking
+  result at Architecture 95/100 and Intent 100/100.
+- `npm run demo:semantic:conflict` returned PASS for baseline, Change A, and
+  Change B, then the expected non-zero combined-state BLOCK at Architecture
+  100/100, Intent 0/100, and 35% over the 30% maximum.
+- `npm run lint` passed.
+- `npm run typecheck` passed across all workspaces.
+- `npm run test` passed: 11 test files and 48 tests.
+- `npm run build` passed for contracts, engine, CLI, and the Next.js control
+  plane.
