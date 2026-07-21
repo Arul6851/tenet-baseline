@@ -1,0 +1,34 @@
+{
+  "name": "tenet",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Intent-aware engineering control plane",
+  "packageManager": "npm@11.9.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "examples/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=@tenet/control-plane",
+    "build": "npm run build --workspace=@tenet/contracts && npm run build --workspace=@tenet/engine && npm run build --workspace=@tenet/cli && npm run build --workspace=@tenet/control-plane",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "vitest run --config vitest.config.ts",
+    "test:watch": "vitest --config vitest.config.ts",
+    "db:generate": "npm run db:generate --workspace=@tenet/control-plane",
+    "db:migrate": "npm run db:migrate --workspace=@tenet/control-plane",
+    "cli": "npm run dev --workspace=@tenet/cli --"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.18.0",
+    "@types/node": "^22.10.2",
+    "eslint": "^9.18.0",
+    "globals": "^15.14.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.20.0",
+    "vitest": "^2.1.8"
+  }
+}

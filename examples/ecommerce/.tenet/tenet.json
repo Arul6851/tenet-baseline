@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "repository": {
+    "name": "tenet-ecommerce-demo"
+  },
+  "tsconfig": "tsconfig.json",
+  "architecture": {
+    "modules": [
+      { "id": "checkout", "paths": ["src/checkout/**"] },
+      { "id": "pricing", "paths": ["src/pricing/**"] },
+      { "id": "loyalty", "paths": ["src/loyalty/**"] },
+      { "id": "payment", "paths": ["src/payment/**"] },
+      { "id": "gateway", "paths": ["src/gateway/**"] },
+      { "id": "database", "paths": ["src/database/**"] }
+    ],
+    "intendedEdges": [
+      ["checkout", "gateway"],
+      ["gateway", "database"]
+    ]
+  }
+}

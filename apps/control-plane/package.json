@@ -1,0 +1,29 @@
+{
+  "name": "@tenet/control-plane",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "db:generate": "drizzle-kit generate --config drizzle.config.ts",
+    "db:migrate": "drizzle-kit migrate --config drizzle.config.ts"
+  },
+  "dependencies": {
+    "@tenet/contracts": "file:../../packages/contracts",
+    "dotenv": "^16.4.7",
+    "drizzle-orm": "latest",
+    "next": "latest",
+    "openai": "latest",
+    "postgres": "^3.4.5",
+    "react": "latest",
+    "react-dom": "latest"
+  },
+  "devDependencies": {
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "drizzle-kit": "latest"
+  }
+}

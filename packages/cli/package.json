@@ -1,0 +1,22 @@
+{
+  "name": "@tenet/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "tenet": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --clean",
+    "dev": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@tenet/contracts": "file:../contracts",
+    "@tenet/engine": "file:../engine",
+    "commander": "^13.1.0"
+  },
+  "devDependencies": {
+    "tsup": "^8.3.5"
+  }
+}

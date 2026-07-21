@@ -1,0 +1,28 @@
+# Dependencies and build output
+node_modules/
+dist/
+.next/
+coverage/
+*.tsbuildinfo
+
+# Local environment and credentials
+.env
+.env.local
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+
+# Local tooling and deployment state
+.vercel/
+.turbo/
+.tenet-demo/
+*.log
+npm-debug.log*
+
+# Editor and operating-system noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*.local.json
