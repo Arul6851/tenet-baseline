@@ -3,7 +3,10 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Tenet",
+  title: {
+    default: "Tenet — Intent-aware engineering",
+    template: "%s · Tenet",
+  },
   description: "Intent-aware engineering control plane",
 };
 
