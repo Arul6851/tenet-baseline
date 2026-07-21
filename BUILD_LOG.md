@@ -137,6 +137,8 @@ This log records the actual development process and must not contain fabricated 
 - The P0 migration refuses a populated pre-persistence database. This is
   intentional: no historic score, enforcement value, or idempotency key is
   inferred for legacy rows.
+- Drizzle and Next.js both explicitly load the repository-root `.env` for
+  local development, matching the documented setup command.
 
 ### Problems and debugging
 
