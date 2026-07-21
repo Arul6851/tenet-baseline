@@ -1,5 +1,5 @@
-import { ControlPlaneApp } from "../components/control-plane-app";
+import { LandingPage } from "../components/landing-page";
 
-export default function OverviewPage() {
-  return <ControlPlaneApp page="overview" />;
+export default function HomePage() {
+  return <LandingPage />;
 }

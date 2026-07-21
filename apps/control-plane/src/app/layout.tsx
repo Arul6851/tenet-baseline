@@ -7,7 +7,7 @@ export const metadata: Metadata = {
     default: "Tenet — Intent-aware engineering",
     template: "%s · Tenet",
   },
-  description: "Intent-aware engineering control plane",
+  description: "Make architectural and business intent enforceable before changes become production problems.",
 };
 
 export default function RootLayout({

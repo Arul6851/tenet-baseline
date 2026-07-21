@@ -1,4 +1,6 @@
-import type { ReactNode } from "react";
+import React, { type ReactNode } from "react";
+
+import { BrandMark } from "./brand-mark";
 
 export type ControlPlanePage =
   | "overview"
@@ -22,7 +24,7 @@ const navigation: ReadonlyArray<{
   href: string;
   icon: string;
 }> = [
-  { id: "overview", label: "Overview", href: "/", icon: "overview" },
+  { id: "overview", label: "Overview", href: "/overview", icon: "overview" },
   {
     id: "architecture",
     label: "Architecture",
@@ -44,14 +46,6 @@ const navigation: ReadonlyArray<{
     icon: "analytics",
   },
 ];
-
-const BrandMark = () => (
-  <span aria-hidden="true" className="brand-mark">
-    <span />
-    <span />
-    <span />
-  </span>
-);
 
 const NavigationIcon = ({ icon }: { icon: string }) => {
   const common = {
@@ -135,7 +129,7 @@ export const ProductShell = ({
         Skip to content
       </a>
       <aside className="product-sidebar" aria-label="Primary navigation">
-        <a className="brand" href="/" aria-label="Tenet overview">
+        <a className="brand" href="/overview" aria-label="Tenet overview">
           <BrandMark />
           <span>Tenet</span>
         </a>
