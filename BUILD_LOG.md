@@ -118,6 +118,9 @@ This log records the actual development process and must not contain fabricated 
 - Added best-effort Git metadata and changed-file collection for synchronized
   runs. Repositories without Git metadata still synchronize valid local
   results.
+- Added a disposable control-plane history runner. When a fresh database and
+  running control plane are configured, it executes five real CLI/API scenarios
+  and verifies the persisted read APIs rather than seeding history.
 - Generated the second Drizzle migration for the persistence schema.
 
 ### Architectural decisions
@@ -149,6 +152,9 @@ This log records the actual development process and must not contain fabricated 
 - The real ts-morph fixture tests occasionally exceeded Vitest's default
   five-second timeout under parallel load. The suite timeout is now fifteen
   seconds so those real analyses remain deterministic and reliable.
+- A repeated Next.js production build encountered a Windows lock on the
+  generated `.next` directory. The verified generated artifact was removed and
+  the clean production build then passed.
 
 ### Verification
 
@@ -174,6 +180,9 @@ This log records the actual development process and must not contain fabricated 
   Architecture 100/100, Intent 0/100, and a proven 35% potential discount.
 - No real PostgreSQL ingestion or persisted history run was executed because a
   valid `DATABASE_URL` was not available in the environment.
+- `npm run demo:control-plane:history` was exercised without its required
+  control-plane URL and stopped before creating temporary scenarios, with a
+  clear configuration error.
 - `npm run db:generate` completed and generated the initial migration.
 
 ---

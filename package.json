@@ -22,7 +22,8 @@
     "cli": "npm run dev --workspace=@tenet/cli --",
     "demo:architecture:compliant": "npm run cli -- check --repo examples/ecommerce",
     "demo:architecture:drift": "tsx scripts/demo-architecture-drift.ts",
-    "demo:semantic:conflict": "tsx scripts/demo-semantic-conflict.ts"
+    "demo:semantic:conflict": "tsx scripts/demo-semantic-conflict.ts",
+    "demo:control-plane:history": "tsx scripts/demo-control-plane-history.ts"
   },
   "devDependencies": {
     "@eslint/js": "^9.18.0",

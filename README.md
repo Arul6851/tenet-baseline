@@ -64,6 +64,19 @@ repository record, its active architecture and business Tenets, intended
 architecture, and the completed validation run. It does not seed fabricated
 validation history.
 
+With a fresh migrated database and the control plane running, the disposable
+history runner executes the complete five-run story through the real CLI and
+API, then verifies the read APIs:
+
+```powershell
+$env:TENET_CONTROL_PLANE_URL = "http://localhost:3000"
+npm run demo:control-plane:history
+```
+
+It records compliant, architectural-drift, fixed-architecture,
+semantic-conflict, and fixed-semantic states. It expects the final state to
+have two resolved logical violations and both health scores restored to 100.
+
 Every request has a client-generated UUID idempotency key. Reposting the same
 completed payload returns the existing validation run rather than creating
 duplicate health snapshots or violations. Logical violations are unique by
