@@ -88,8 +88,6 @@ This log records the actual development process and must not contain fabricated 
 - `npm run build` passed for contracts, engine, CLI, and the Next.js control
   plane.
 
----
-
 ## Control Plane Persistence - 2026-07-21
 
 - Added a shared, strict Zod contract for completed deterministic validation
@@ -503,3 +501,89 @@ This log records the actual development process and must not contain fabricated 
   GPT-boundary tests.
 - `npm run build` passed for contracts, engine, CLI, and the Next.js control
   plane.
+
+---
+
+## Live GPT-5.6 Product Verification - 2026-07-21
+
+- Verified live Responses API access with the configured `gpt-5.6-terra`
+  model through the existing `OpenAiTenetService` boundary. The service remains
+  proposal-and-explanation only; deterministic validators remain the sole
+  source of PASS/WARN/BLOCK and health results.
+- The first live Structured Outputs request exposed an API compatibility issue:
+  the canonical Tenet proposal schema contains semantically optional fields,
+  including architecture `expectedRoute`, while the Structured Outputs subset
+  requires generated object fields to be required. A dedicated OpenAI output
+  schema now contains only model-generated values, with every field required;
+  the optional architecture intermediary is required-but-nullable at that
+  boundary.
+- Added a strict normalizer between the OpenAI boundary and the canonical
+  deterministic Tenet domain contract. It maps a nullable
+  `requiredIntermediary` to the canonical optional `expectedRoute` and derives
+  a complete route from source, intermediary, and target. It then parses the
+  result with the existing canonical schema. The server, rather than the model,
+  supplies original intent, model identity, and the required human-confirmation
+  flag.
+- The first valid live architecture response also showed that asking the model
+  for a complete route was ambiguous: it supplied only the intermediary. The
+  output contract now asks for the single intermediary explicitly and derives
+  the canonical route deterministically. This preserves strict validation
+  rather than repairing an individual model result.
+- A live Architecture proposal for “Checkout should never access the database
+  directly. It must go through DatabaseGateway.” returned a draft Architecture
+  Tenet with source `checkout`, target `database`, and canonical route
+  `checkout -> gateway -> database`.
+- A live Business proposal for the combined customer-discount cap returned a
+  draft `max_combined_discount` Tenet with `maximumPercent: 30`, stack group
+  `customer`, and `requireCombinable: true`.
+- A live ambiguous request (“Make sure checkout stays clean and discounts don't
+  get too high.”) returned a visible draft with assumptions. It did not create
+  an active Tenet or alter deterministic enforcement, leaving the human able to
+  inspect or reject the inferred policy.
+- Browser verification exercised the actual New Tenet flow: natural-language
+  input, the Interpreting loading state, real GPT proposal review, normalized
+  structured constraint display, Cancel, and Confirm & Enforce controls. The
+  duplicate Architecture proposal was cancelled after review and was not
+  activated in the primary repository.
+- Verified confirmation safely in an isolated control-plane repository. Its
+  real GPT-generated Business proposal left the repository with zero Tenets
+  before confirmation; an explicit `confirmed: true` request created one active
+  Tenet with the validated deterministic discount constraint. The isolated
+  repository, its one test Tenet, and its one synchronized validation run were
+  then deleted after exact identity checks.
+- Generated live GPT explanations from the persisted deterministic Semantic
+  Conflict and Architectural Drift violations. The semantic explanation
+  described the 20% and 15% discounts producing 35% against the 30% cap; the
+  architecture explanation described the direct checkout-to-database bypass.
+  Read-back verification confirmed that explanation generation changed neither
+  validation runs, health snapshots, deterministic evidence, Tenet state, nor
+  violation lifecycle.
+- Rechecked primary demo-data integrity after live verification: the primary
+  repository still has exactly the two canonical active Tenets, five validator
+  generated runs (`PASS, BLOCK, PASS, BLOCK, PASS`), both resolved logical
+  violations, five graph snapshots, Architecture Health history
+  `100, 95, 100, 100, 100`, and Intent Health history
+  `100, 100, 100, 0, 100`.
+- Added ordinary non-live regression coverage for the OpenAI output boundary:
+  Structured Outputs format creation, nullable-field normalization, valid
+  Architecture and Business drafts, malformed/unsupported output rejection,
+  strict explanation parsing, and server-owned draft metadata. Existing
+  confirmation-route tests continue to prove that proposal generation cannot
+  activate a Tenet without explicit confirmation.
+- Rechecked secret handling before commit: `.env` is ignored and untracked,
+  no credential-shaped values appear in tracked source or this verification
+  change, and `.env.example` now uses credential-free placeholders.
+
+### Verification
+
+- `npm run lint` passed.
+- `npm run typecheck` passed across all workspaces.
+- `npm run test` passed: 19 test files and 78 tests.
+- `npm run build` passed for contracts, engine, CLI, and the Next.js control
+  plane.
+- `npm run demo:architecture:compliant` returned PASS at Architecture 100/100
+  and Intent 100/100; the drift demo retained its expected non-zero BLOCK at
+  Architecture 95/100 and Intent 100/100.
+- `npm run demo:semantic:conflict` retained PASS for baseline, Change A, and
+  Change B, followed by its expected non-zero combined-state BLOCK at
+  Architecture 100/100, Intent 0/100, and 35% over the 30% maximum.
