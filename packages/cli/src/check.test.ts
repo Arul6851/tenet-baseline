@@ -40,6 +40,23 @@ const semanticScenarioRoot = join(
 );
 const temporaryDirectories: string[] = [];
 
+/**
+ * A developer may locally connect the checked-in demo fixture to a control
+ * plane. That ignored telemetry setting must never turn deterministic unit
+ * tests into network-backed checks.
+ */
+const copyEcommerceFixture = async (repositoryRoot: string): Promise<void> => {
+  const localConnectionPath = join(
+    ecommerceFixture,
+    ".tenet",
+    "control-plane.json",
+  );
+  await cp(ecommerceFixture, repositoryRoot, {
+    recursive: true,
+    filter: (source) => source !== localConnectionPath,
+  });
+};
+
 const createCapturedTerminal = (): {
   output: TerminalOutput;
   lines: string[];
@@ -81,7 +98,7 @@ const writeStandaloneTsconfig = async (repositoryRoot: string): Promise<void> =>
 const createCompliantRepository = async (): Promise<string> => {
   const repositoryRoot = await mkdtemp(join(tmpdir(), "tenet-cli-compliant-"));
   temporaryDirectories.push(repositoryRoot);
-  await cp(ecommerceFixture, repositoryRoot, { recursive: true });
+  await copyEcommerceFixture(repositoryRoot);
   await writeStandaloneTsconfig(repositoryRoot);
   return repositoryRoot;
 };
@@ -89,7 +106,7 @@ const createCompliantRepository = async (): Promise<string> => {
 const createDriftRepository = async (): Promise<string> => {
   const repositoryRoot = await mkdtemp(join(tmpdir(), "tenet-cli-drift-"));
   temporaryDirectories.push(repositoryRoot);
-  await cp(ecommerceFixture, repositoryRoot, { recursive: true });
+  await copyEcommerceFixture(repositoryRoot);
   await writeStandaloneTsconfig(repositoryRoot);
   await copyFile(
     driftOverlay,
@@ -101,7 +118,7 @@ const createDriftRepository = async (): Promise<string> => {
 const createSemanticConflictRepository = async (): Promise<string> => {
   const repositoryRoot = await mkdtemp(join(tmpdir(), "tenet-cli-semantic-"));
   temporaryDirectories.push(repositoryRoot);
-  await cp(ecommerceFixture, repositoryRoot, { recursive: true });
+  await copyEcommerceFixture(repositoryRoot);
   await writeStandaloneTsconfig(repositoryRoot);
 
   await Promise.all(
@@ -127,10 +144,11 @@ afterEach(async () => {
 
 describe("tenet check", () => {
   it("prints PASS and returns zero for the compliant ecommerce fixture", async () => {
+    const repositoryRoot = await createCompliantRepository();
     const terminal = createCapturedTerminal();
 
     const exitCode = await runCheckCommand(
-      { repositoryPath: ecommerceFixture },
+      { repositoryPath: repositoryRoot },
       terminal.output,
     );
 
