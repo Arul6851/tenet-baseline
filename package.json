@@ -21,7 +21,8 @@
     "db:migrate": "npm run db:migrate --workspace=@tenet/control-plane",
     "cli": "npm run dev --workspace=@tenet/cli --",
     "demo:architecture:compliant": "npm run cli -- check --repo examples/ecommerce",
-    "demo:architecture:drift": "tsx scripts/demo-architecture-drift.ts"
+    "demo:architecture:drift": "tsx scripts/demo-architecture-drift.ts",
+    "demo:semantic:conflict": "tsx scripts/demo-semantic-conflict.ts"
   },
   "devDependencies": {
     "@eslint/js": "^9.18.0",

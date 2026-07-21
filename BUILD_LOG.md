@@ -142,3 +142,78 @@ This log records the actual development process and must not contain fabricated 
   Health 100/100 and PASS.
 - `npm run demo:architecture:drift` returned exit code 1 with Architecture
   Health 95/100, one blocking violation, and COMMIT BLOCKED.
+
+---
+
+## Semantic Conflict Enforcement - 2026-07-21
+
+- Extended the ts-morph analysis pass to extract deterministic discount facts
+  from direct `defineDiscount({ ... })` calls with literal `id`, `percent`,
+  `stackGroup`, and `combinable` fields. Extracted facts include source file,
+  location, module ownership when available, and a compact source excerpt.
+- Added non-blocking analysis warnings for unsupported dynamic discount fields
+  and duplicate declarations. Unsupported or conflicting declarations are
+  deliberately excluded from blocking calculations.
+- Added the active `Maximum Combined Discount` business Tenet to the ecommerce
+  fixture: customer discounts must be combinable and total at most 30%.
+- Added the deterministic `BusinessInvariantValidator` extension point and the
+  P0 `MaxCombinedDiscountValidator`. It sums only unambiguous, literal,
+  combinable discounts in the configured stack group and emits a stable
+  semantic violation when the proven total exceeds the configured maximum.
+- Added typed semantic violation evidence containing the maximum, potential
+  percentage, contributing declarations, affected files, Tenet metadata, and
+  blocking status.
+- Added `runTenetCheck`, which performs one source analysis then evaluates
+  architecture and business Tenets separately. Architecture Health is still
+  calculated only from architecture findings; Intent Health is calculated only
+  from business-Tenet evaluations.
+- Extended `tenet check` with separate Architecture and Intent Health output,
+  Architecture Tenets and Business Tenets sections, and a semantic-conflict
+  report. GPT is not in the enforcement or score-calculation path.
+- Added safe semantic scenario overlays for baseline, Change A, Change B, and
+  their combined state. The combined scenario modifies pricing and loyalty in
+  separate files, demonstrating a no-textual-conflict state without mutating
+  a Git checkout.
+- Added `scripts/demo-semantic-conflict.ts`, which runs all four states in
+  disposable repository copies and intentionally exits 1 for the combined
+  blocking state.
+
+### Problems and debugging
+
+- Lint identified an unused duplicate-declaration grouping key in the new
+  analyzer. The key was removed without changing the deterministic grouping
+  behavior.
+- Strict TypeScript identified an indexed scenario-fixture lookup as possibly
+  undefined under `noUncheckedIndexedAccess`. The test helper now checks the
+  scenario map entry before copying fixture files.
+
+### Technical limitations
+
+- P0 semantic enforcement recognizes only direct `defineDiscount` calls whose
+  relevant fields are literals. Identifiers, arithmetic, spreads, conditionals,
+  and runtime values produce warnings rather than inferred blocking evidence.
+- The semantic demo proves two non-overlapping TypeScript source changes in
+  disposable copies. It does not automate temporary Git branches or merges.
+- This is a single explicit business invariant type, not a claim of arbitrary
+  semantic program analysis.
+
+### Verification
+
+- Baseline (0% holiday + 0% premium) returned PASS with Architecture 100/100
+  and Intent 100/100.
+- Change A (20% holiday + 0% premium) returned PASS with Architecture 100/100
+  and Intent 100/100.
+- Change B (0% holiday + 15% premium) returned PASS with Architecture 100/100
+  and Intent 100/100.
+- Combined state (20% holiday + 15% premium) returned BLOCK with Architecture
+  100/100, Intent 0/100, one semantic violation, a 30% maximum, and a proven
+  35% potential discount.
+- The approved compliant architecture scenario still returned PASS at
+  Architecture 100/100 and Intent 100/100.
+- The approved architecture-drift scenario still returned BLOCK at Architecture
+  95/100 while Intent remained 100/100.
+- `npm run lint` passed.
+- `npm run typecheck` passed across all workspaces.
+- `npm run test` passed: 5 test files and 25 tests.
+- `npm run build` passed for contracts, engine, CLI, and the Next.js control
+  plane.

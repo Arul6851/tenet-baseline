@@ -21,6 +21,16 @@ const driftOverlay = join(
   "checkout",
   "checkout-service.ts",
 );
+const semanticCombinedOverlays = [
+  "src/pricing/discount-policy.ts",
+  "src/loyalty/premium-loyalty-discount.ts",
+] as const;
+const semanticScenarioRoot = join(
+  workspaceRoot,
+  "fixtures",
+  "demo-scenarios",
+  "semantic-combined",
+);
 const temporaryDirectories: string[] = [];
 
 const createCapturedTerminal = (): {
@@ -69,6 +79,41 @@ const createDriftRepository = async (): Promise<string> => {
   return repositoryRoot;
 };
 
+const createSemanticConflictRepository = async (): Promise<string> => {
+  const repositoryRoot = await mkdtemp(join(tmpdir(), "tenet-cli-semantic-"));
+  temporaryDirectories.push(repositoryRoot);
+  await cp(ecommerceFixture, repositoryRoot, { recursive: true });
+  await writeFile(
+    join(repositoryRoot, "tsconfig.json"),
+    `${JSON.stringify(
+      {
+        compilerOptions: {
+          target: "ES2022",
+          module: "NodeNext",
+          moduleResolution: "NodeNext",
+          strict: true,
+          rootDir: "src",
+          outDir: "dist",
+        },
+        include: ["src/**/*.ts"],
+      },
+      null,
+      2,
+    )}\n`,
+  );
+
+  await Promise.all(
+    semanticCombinedOverlays.map((relativeFilePath) =>
+      copyFile(
+        join(semanticScenarioRoot, relativeFilePath),
+        join(repositoryRoot, relativeFilePath),
+      ),
+    ),
+  );
+
+  return repositoryRoot;
+};
+
 afterEach(async () => {
   await Promise.all(
     temporaryDirectories.splice(0).map((directory) =>
@@ -89,6 +134,8 @@ describe("tenet check", () => {
     expect(exitCode).toBe(0);
     expect(terminal.errors).toEqual([]);
     expect(terminal.lines.join("\n")).toContain("Architecture       100/100");
+    expect(terminal.lines.join("\n")).toContain("Intent             100/100");
+    expect(terminal.lines).toContain("Business Tenets");
     expect(terminal.lines).toContain("PASS");
   });
 
@@ -106,5 +153,25 @@ describe("tenet check", () => {
     expect(terminal.lines.join("\n")).toContain("Architecture       95/100");
     expect(terminal.lines).toContain("ARCHITECTURAL DRIFT");
     expect(terminal.lines).toContain("COMMIT BLOCKED");
+  });
+
+  it("prints a semantic conflict and returns non-zero for the merged discount state", async () => {
+    const repositoryRoot = await createSemanticConflictRepository();
+    const terminal = createCapturedTerminal();
+
+    const exitCode = await runCheckCommand(
+      { repositoryPath: repositoryRoot },
+      terminal.output,
+    );
+
+    const output = terminal.lines.join("\n");
+    expect(exitCode).toBe(1);
+    expect(terminal.errors).toEqual([]);
+    expect(output).toContain("Architecture       100/100");
+    expect(output).toContain("Intent             0/100");
+    expect(terminal.lines).toContain("SEMANTIC CONFLICT");
+    expect(output).toContain("Maximum allowed:");
+    expect(output).toContain("35%");
+    expect(terminal.lines).toContain("CHANGE BLOCKED");
   });
 });

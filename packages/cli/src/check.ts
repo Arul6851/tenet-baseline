@@ -3,9 +3,10 @@ import { resolve } from "node:path";
 import {
   defaultTenetConfigPath,
   loadTenetConfiguration,
-  runArchitectureCheck,
-  type ArchitectureCheckResult,
+  runTenetCheck,
+  type TenetCheckResult,
 } from "@tenet/engine";
+import type { TenetEvaluation, Violation } from "@tenet/contracts";
 
 export interface TerminalOutput {
   log(message: string): void;
@@ -25,8 +26,20 @@ const defaultTerminal: TerminalOutput = {
 const displayModule = (module: string): string =>
   module.slice(0, 1).toUpperCase() + module.slice(1);
 
-const writeArchitectureHeader = (
-  result: ArchitectureCheckResult,
+const displayPercent = (value: number): string => `${value}%`;
+
+const displayDiscount = (value: string): string =>
+  value
+    .replace(/([a-z0-9])([A-Z])/gu, "$1 $2")
+    .replaceAll("-", " ")
+    .replace(/\b\w/gu, (character) => character.toUpperCase());
+
+const isBlockingViolation = (violation: Violation): boolean =>
+  violation.enforcement === "block_merge" &&
+  (violation.status === "active" || violation.status === "blocked");
+
+const writeHeader = (
+  result: TenetCheckResult,
   terminal: TerminalOutput,
 ): void => {
   terminal.log("TENET");
@@ -34,12 +47,30 @@ const writeArchitectureHeader = (
   terminal.log("Validating repository...");
   terminal.log("");
   terminal.log(`Architecture       ${result.architectureHealth.score}/100`);
+  terminal.log(`Intent             ${result.intentHealth.score}/100`);
+};
+
+const writeEvaluations = (
+  title: string,
+  evaluations: readonly TenetEvaluation[],
+  terminal: TerminalOutput,
+): void => {
   terminal.log("");
-  terminal.log("Architecture Tenets");
+  terminal.log(title);
+
+  if (evaluations.length === 0) {
+    terminal.log("- No active Tenets.");
+    return;
+  }
+
+  for (const evaluation of evaluations) {
+    const marker = evaluation.status === "satisfied" ? "✓" : "✕";
+    terminal.log(`${marker} ${evaluation.summary}`);
+  }
 };
 
 const writeWarnings = (
-  result: ArchitectureCheckResult,
+  result: TenetCheckResult,
   terminal: TerminalOutput,
 ): void => {
   if (result.analysis.warnings.length === 0) {
@@ -50,24 +81,18 @@ const writeWarnings = (
   terminal.log("Analysis warnings (non-blocking)");
 
   for (const warning of result.analysis.warnings) {
-    terminal.log(
-      `! ${warning.file}:${warning.line} ${warning.message}`,
-    );
+    terminal.log(`! ${warning.file}:${warning.line} ${warning.message}`);
   }
 };
 
-const writeViolation = (
-  result: ArchitectureCheckResult,
+const writeArchitectureViolation = (
+  violation: Violation,
   terminal: TerminalOutput,
 ): void => {
-  const [violation] = result.violations;
-
-  if (!violation?.architecture) {
+  if (!violation.architecture) {
     return;
   }
 
-  terminal.log("");
-  terminal.log(`${result.violations.length} blocking violation${result.violations.length === 1 ? "" : "s"}`);
   terminal.log("");
   terminal.log("ARCHITECTURAL DRIFT");
   terminal.log("");
@@ -95,13 +120,84 @@ const writeViolation = (
   terminal.log("Evidence:");
 
   for (const evidence of violation.evidence) {
-    terminal.log(
-      `${evidence.file}:${evidence.line ?? "?"} — ${evidence.excerpt}`,
-    );
+    terminal.log(`${evidence.file}:${evidence.line ?? "?"} — ${evidence.excerpt}`);
   }
 
   terminal.log("");
   terminal.log("COMMIT BLOCKED");
+};
+
+const writeSemanticViolation = (
+  violation: Violation,
+  terminal: TerminalOutput,
+): void => {
+  if (!violation.semantic) {
+    return;
+  }
+
+  const details = violation.semantic;
+  const terms = details.contributingDiscounts.map((discount) =>
+    displayPercent(discount.percent),
+  );
+
+  terminal.log("");
+  terminal.log("SEMANTIC CONFLICT");
+  terminal.log("");
+  terminal.log(violation.tenetName ?? "Business Tenet");
+  terminal.log("");
+  terminal.log("Maximum allowed:");
+  terminal.log(displayPercent(details.maximumPercent));
+  terminal.log("");
+  terminal.log("Potential:");
+  terminal.log(displayPercent(details.potentialPercent));
+  terminal.log("");
+  terminal.log("Contributing evidence:");
+
+  for (const discount of details.contributingDiscounts) {
+    terminal.log(
+      `${displayDiscount(discount.name ?? discount.id)}       ${displayPercent(discount.percent)} (${discount.sourceFile}:${discount.line})`,
+    );
+  }
+
+  terminal.log("");
+  terminal.log(`${terms.join(" + ")} = ${displayPercent(details.potentialPercent)}`);
+  terminal.log("");
+  terminal.log("Violated Tenet:");
+  terminal.log("");
+  terminal.log(`"${violation.tenetDescription ?? violation.message}"`);
+  terminal.log("");
+  terminal.log("Git has no textual conflict.");
+  terminal.log("The resulting code violates declared business intent.");
+  terminal.log("");
+  terminal.log("CHANGE BLOCKED");
+};
+
+const writeBlockingViolations = (
+  violations: readonly Violation[],
+  terminal: TerminalOutput,
+): void => {
+  const blockingViolations = violations.filter(isBlockingViolation);
+  terminal.log("");
+  terminal.log(
+    `${blockingViolations.length} blocking violation${blockingViolations.length === 1 ? "" : "s"}`,
+  );
+
+  for (const violation of blockingViolations) {
+    if (violation.type === "architecture") {
+      writeArchitectureViolation(violation, terminal);
+      continue;
+    }
+
+    if (violation.type === "semantic") {
+      writeSemanticViolation(violation, terminal);
+      continue;
+    }
+
+    terminal.log("");
+    terminal.log(violation.title);
+    terminal.log(violation.message);
+    terminal.log("CHANGE BLOCKED");
+  }
 };
 
 export const runCheckCommand = async (
@@ -118,21 +214,17 @@ export const runCheckCommand = async (
       ? resolve(invocationDirectory, options.configPath)
       : defaultTenetConfigPath(repositoryRoot);
     const configuration = await loadTenetConfiguration(configPath);
-    const result = await runArchitectureCheck({
+    const result = await runTenetCheck({
       repositoryRoot,
       configuration,
     });
 
-    writeArchitectureHeader(result, terminal);
-
-    for (const evaluation of result.evaluations) {
-      terminal.log(
-        `${evaluation.status === "satisfied" ? "✓" : "✕"} ${evaluation.summary}`,
-      );
-    }
+    writeHeader(result, terminal);
+    writeEvaluations("Architecture Tenets", result.architectureEvaluations, terminal);
+    writeEvaluations("Business Tenets", result.businessEvaluations, terminal);
 
     if (result.status === "BLOCK") {
-      writeViolation(result, terminal);
+      writeBlockingViolations(result.violations, terminal);
       writeWarnings(result, terminal);
       return 1;
     }
@@ -144,7 +236,8 @@ export const runCheckCommand = async (
     terminal.log(result.status);
     return 0;
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Unexpected validation error";
+    const message =
+      error instanceof Error ? error.message : "Unexpected validation error";
     terminal.error(`tenet check failed: ${message}`);
     return 2;
   }
