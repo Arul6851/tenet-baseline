@@ -1,14 +1,22 @@
 import { relative, resolve } from "node:path";
 
 import {
+  Node,
   Project,
   SyntaxKind,
+  type CallExpression,
+  type Expression,
   type ExportDeclaration,
   type ImportDeclaration,
+  type ObjectLiteralExpression,
   type SourceFile,
 } from "ts-morph";
 
-import type { ArchitectureNode, DependencyEdge } from "@tenet/contracts";
+import type {
+  ArchitectureNode,
+  DependencyEdge,
+  DiscountFact,
+} from "@tenet/contracts";
 
 export interface AnalysisRequest {
   repositoryRoot: string;
@@ -17,7 +25,11 @@ export interface AnalysisRequest {
 }
 
 export interface AnalysisWarning {
-  kind: "dynamic_import" | "unresolved_import";
+  kind:
+    | "dynamic_import"
+    | "unresolved_import"
+    | "unsupported_discount_declaration"
+    | "duplicate_discount_declaration";
   file: string;
   line: number;
   column: number;
@@ -27,6 +39,7 @@ export interface AnalysisWarning {
 
 export interface RepositoryAnalysis {
   edges: readonly DependencyEdge[];
+  discounts: readonly DiscountFact[];
   warnings: readonly AnalysisWarning[];
 }
 
@@ -157,6 +170,61 @@ const declarationLocation = (
   start: number,
 ): { line: number; column: number } => sourceFile.getLineAndColumnAtPos(start);
 
+const literalPropertyInitializer = (
+  objectLiteral: ObjectLiteralExpression,
+  name: string,
+): Expression | undefined => {
+  const property = objectLiteral.getProperty(name);
+  return property && Node.isPropertyAssignment(property)
+    ? property.getInitializer()
+    : undefined;
+};
+
+const stringLiteralValue = (expression: Expression | undefined): string | undefined =>
+  expression && Node.isStringLiteral(expression)
+    ? expression.getLiteralText()
+    : undefined;
+
+const numericLiteralValue = (expression: Expression | undefined): number | undefined => {
+  if (!expression || !Node.isNumericLiteral(expression)) {
+    return undefined;
+  }
+
+  const value = Number(expression.getText());
+  return Number.isFinite(value) && value >= 0 && value <= 100 ? value : undefined;
+};
+
+const booleanLiteralValue = (
+  expression: Expression | undefined,
+): boolean | undefined => {
+  if (!expression) {
+    return undefined;
+  }
+
+  if (expression.getKind() === SyntaxKind.TrueKeyword) {
+    return true;
+  }
+
+  if (expression.getKind() === SyntaxKind.FalseKeyword) {
+    return false;
+  }
+
+  return undefined;
+};
+
+const isDefineDiscountCall = (callExpression: CallExpression): boolean => {
+  const expression = callExpression.getExpression();
+  return Node.isIdentifier(expression) && expression.getText() === "defineDiscount";
+};
+
+const compactExcerpt = (value: string): string => {
+  const normalized = value.replace(/\s+/gu, " ").trim();
+  const maximumLength = 240;
+  return normalized.length <= maximumLength
+    ? normalized
+    : `${normalized.slice(0, maximumLength - 1)}…`;
+};
+
 /**
  * Converts TypeScript source imports into direct, runtime module dependencies.
  * It deliberately does not infer call graphs or try to execute dynamic imports.
@@ -171,6 +239,7 @@ export class TsMorphSourceAnalyzer implements SourceAnalyzer {
       | Record<string, readonly string[]>
       | undefined;
     const edges: DependencyEdge[] = [];
+    const extractedDiscounts: DiscountFact[] = [];
     const warnings: AnalysisWarning[] = [];
 
     const sourceFiles = project
@@ -195,6 +264,107 @@ export class TsMorphSourceAnalyzer implements SourceAnalyzer {
         column: location.column,
         importSpecifier,
         message,
+      });
+    };
+
+    const addDiscountWarning = (
+      sourceFile: SourceFile,
+      callExpression: CallExpression,
+      message: string,
+    ): void => {
+      addWarning(
+        "unsupported_discount_declaration",
+        sourceFile,
+        callExpression.getStart(),
+        "defineDiscount",
+        message,
+      );
+    };
+
+    const extractDiscount = (
+      sourceFile: SourceFile,
+      callExpression: CallExpression,
+    ): void => {
+      if (!isDefineDiscountCall(callExpression)) {
+        return;
+      }
+
+      const [argument] = callExpression.getArguments();
+      if (!argument || !Node.isObjectLiteralExpression(argument)) {
+        addDiscountWarning(
+          sourceFile,
+          callExpression,
+          "defineDiscount requires an object literal for deterministic semantic analysis.",
+        );
+        return;
+      }
+
+      const id = stringLiteralValue(literalPropertyInitializer(argument, "id"));
+      const percent = numericLiteralValue(
+        literalPropertyInitializer(argument, "percent"),
+      );
+      const stackGroup = stringLiteralValue(
+        literalPropertyInitializer(argument, "stackGroup"),
+      );
+      const combinable = booleanLiteralValue(
+        literalPropertyInitializer(argument, "combinable"),
+      );
+
+      const missingFields = [
+        ...(id === undefined ? ["id"] : []),
+        ...(percent === undefined ? ["percent"] : []),
+        ...(stackGroup === undefined ? ["stackGroup"] : []),
+        ...(combinable === undefined ? ["combinable"] : []),
+      ];
+
+      if (missingFields.length > 0) {
+        addDiscountWarning(
+          sourceFile,
+          callExpression,
+          `defineDiscount has non-literal or unsupported ${missingFields.join(", ")}; it is not blocking evidence.`,
+        );
+        return;
+      }
+
+      if (
+        id === undefined ||
+        percent === undefined ||
+        stackGroup === undefined ||
+        combinable === undefined
+      ) {
+        return;
+      }
+
+      const sourceFilePath = relativeToRepository(
+        repositoryRoot,
+        sourceFile.getFilePath(),
+      );
+      if (sourceFilePath.startsWith("../")) {
+        return;
+      }
+
+      const sourceModule = moduleForFile(sourceFilePath, request.modules);
+      const location = declarationLocation(sourceFile, callExpression.getStart());
+      const variableDeclaration = callExpression.getFirstAncestorByKind(
+        SyntaxKind.VariableDeclaration,
+      );
+      const declaredName = stringLiteralValue(
+        literalPropertyInitializer(argument, "name"),
+      );
+      const name = declaredName ?? variableDeclaration?.getName();
+
+      extractedDiscounts.push({
+        kind: "discount",
+        id,
+        ...(name ? { name } : {}),
+        percent,
+        stackGroup,
+        combinable,
+        ...(sourceModule ? { sourceModule: sourceModule.id } : {}),
+        sourceFile: sourceFilePath,
+        line: location.line,
+        column: location.column,
+        excerpt: compactExcerpt(callExpression.getText()),
       });
     };
 
@@ -280,6 +450,8 @@ export class TsMorphSourceAnalyzer implements SourceAnalyzer {
       for (const callExpression of sourceFile.getDescendantsOfKind(
         SyntaxKind.CallExpression,
       )) {
+        extractDiscount(sourceFile, callExpression);
+
         if (callExpression.getExpression().getKind() !== SyntaxKind.ImportKeyword) {
           continue;
         }
@@ -296,12 +468,80 @@ export class TsMorphSourceAnalyzer implements SourceAnalyzer {
       }
     }
 
+    const discountsByIdentity = new Map<string, DiscountFact[]>();
+    for (const discount of extractedDiscounts) {
+      const identity = `${discount.stackGroup}\u0000${discount.id}`;
+      const existing = discountsByIdentity.get(identity);
+      if (existing) {
+        existing.push(discount);
+      } else {
+        discountsByIdentity.set(identity, [discount]);
+      }
+    }
+
+    const discounts: DiscountFact[] = [];
+    for (const [, occurrences] of [...discountsByIdentity.entries()].sort(
+      ([left], [right]) => left.localeCompare(right),
+    )) {
+      const orderedOccurrences = [...occurrences].sort(
+        (left, right) =>
+          left.sourceFile.localeCompare(right.sourceFile) ||
+          left.line - right.line ||
+          left.column - right.column,
+      );
+      const [canonical] = orderedOccurrences;
+
+      if (!canonical) {
+        continue;
+      }
+
+      const signatures = new Set(
+        orderedOccurrences.map(
+          (discount) =>
+            `${discount.percent}\u0000${discount.combinable}\u0000${discount.name ?? ""}`,
+        ),
+      );
+
+      if (signatures.size === 1) {
+        discounts.push(canonical);
+        for (const duplicate of orderedOccurrences.slice(1)) {
+          warnings.push({
+            kind: "duplicate_discount_declaration",
+            file: duplicate.sourceFile,
+            line: duplicate.line,
+            column: duplicate.column,
+            importSpecifier: duplicate.id,
+            message: `Duplicate discount declaration "${duplicate.id}" is counted once for ${duplicate.stackGroup}.`,
+          });
+        }
+        continue;
+      }
+
+      for (const conflictingDiscount of orderedOccurrences) {
+        warnings.push({
+          kind: "duplicate_discount_declaration",
+          file: conflictingDiscount.sourceFile,
+          line: conflictingDiscount.line,
+          column: conflictingDiscount.column,
+          importSpecifier: conflictingDiscount.id,
+          message: `Conflicting declarations for discount "${conflictingDiscount.id}" are not used as blocking evidence.`,
+        });
+      }
+    }
+
     return {
       edges: edges.sort(
         (left, right) =>
           left.sourceFile.localeCompare(right.sourceFile) ||
           (left.line ?? 0) - (right.line ?? 0) ||
           left.importSpecifier.localeCompare(right.importSpecifier),
+      ),
+      discounts: discounts.sort(
+        (left, right) =>
+          left.stackGroup.localeCompare(right.stackGroup) ||
+          left.id.localeCompare(right.id) ||
+          left.sourceFile.localeCompare(right.sourceFile) ||
+          left.line - right.line,
       ),
       warnings: warnings.sort(
         (left, right) =>

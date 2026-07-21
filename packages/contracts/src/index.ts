@@ -166,7 +166,7 @@ export type DependencyEdge = z.infer<typeof DependencyEdgeSchema>;
 
 export const ViolationEvidenceSchema = z
   .object({
-    kind: z.enum(["import", "symbol", "constant", "graph"]),
+    kind: z.enum(["import", "symbol", "constant", "discount", "graph"]),
     file: z.string().min(1),
     line: z.number().int().positive().optional(),
     column: z.number().int().positive().optional(),
@@ -174,6 +174,28 @@ export const ViolationEvidenceSchema = z
   })
   .strict();
 export type ViolationEvidence = z.infer<typeof ViolationEvidenceSchema>;
+
+/**
+ * A discount declaration that was extracted entirely from literal TypeScript
+ * source. Facts with computed or otherwise uncertain fields are deliberately
+ * excluded from this model so they cannot become blocking evidence.
+ */
+export const DiscountFactSchema = z
+  .object({
+    kind: z.literal("discount"),
+    id: z.string().min(1),
+    name: z.string().min(1).optional(),
+    percent: z.number().min(0).max(100),
+    stackGroup: z.string().min(1),
+    combinable: z.boolean(),
+    sourceModule: z.string().min(1).optional(),
+    sourceFile: z.string().min(1),
+    line: z.number().int().positive(),
+    column: z.number().int().positive(),
+    excerpt: z.string().min(1),
+  })
+  .strict();
+export type DiscountFact = z.infer<typeof DiscountFactSchema>;
 
 export const ArchitectureViolationDetailsSchema = z
   .object({
@@ -185,6 +207,19 @@ export const ArchitectureViolationDetailsSchema = z
   .strict();
 export type ArchitectureViolationDetails = z.infer<
   typeof ArchitectureViolationDetailsSchema
+>;
+
+export const SemanticViolationDetailsSchema = z
+  .object({
+    kind: z.literal("max_combined_discount"),
+    stackGroup: z.string().min(1),
+    maximumPercent: z.number().min(0).max(100),
+    potentialPercent: z.number().min(0),
+    contributingDiscounts: z.array(DiscountFactSchema).min(1),
+  })
+  .strict();
+export type SemanticViolationDetails = z.infer<
+  typeof SemanticViolationDetailsSchema
 >;
 
 export const ViolationSchema = z
@@ -203,6 +238,7 @@ export const ViolationSchema = z
     evidence: z.array(ViolationEvidenceSchema).min(1),
     architectureFinding: ArchitectureFindingKindSchema.optional(),
     architecture: ArchitectureViolationDetailsSchema.optional(),
+    semantic: SemanticViolationDetailsSchema.optional(),
   })
   .strict();
 export type Violation = z.infer<typeof ViolationSchema>;

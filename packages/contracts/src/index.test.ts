@@ -19,11 +19,40 @@ const architectureTenet = {
   },
 };
 
+const businessTenet = {
+  id: "maximum-combined-customer-discount",
+  name: "Maximum Combined Discount",
+  description: "Maximum combined customer discount must never exceed 30%.",
+  type: "business" as const,
+  severity: "critical" as const,
+  enforcement: "block_merge" as const,
+  status: "active" as const,
+  scope: ["pricing", "loyalty"],
+  constraint: {
+    kind: "max_combined_discount" as const,
+    maximumPercent: 30,
+    stackGroup: "customer",
+  },
+};
+
 describe("TenetSchema", () => {
   it("accepts an enforceable direct-dependency tenet", () => {
     expect(TenetSchema.parse(architectureTenet)).toMatchObject({
       id: "checkout-boundary",
       enforcement: "block_merge",
+    });
+  });
+
+  it("accepts an enforceable combined-discount business tenet", () => {
+    expect(TenetSchema.parse(businessTenet)).toMatchObject({
+      id: "maximum-combined-customer-discount",
+      type: "business",
+      constraint: {
+        kind: "max_combined_discount",
+        maximumPercent: 30,
+        stackGroup: "customer",
+        requireCombinable: true,
+      },
     });
   });
 

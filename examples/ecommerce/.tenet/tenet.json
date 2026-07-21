@@ -38,6 +38,22 @@
         "targetModule": "database",
         "expectedRoute": ["checkout", "gateway", "database"]
       }
+    },
+    {
+      "id": "maximum-combined-customer-discount",
+      "name": "Maximum Combined Discount",
+      "description": "Maximum combined customer discount must never exceed 30%.",
+      "type": "business",
+      "severity": "critical",
+      "enforcement": "block_merge",
+      "status": "active",
+      "scope": ["pricing", "loyalty"],
+      "constraint": {
+        "kind": "max_combined_discount",
+        "maximumPercent": 30,
+        "stackGroup": "customer",
+        "requireCombinable": true
+      }
     }
   ]
 }
