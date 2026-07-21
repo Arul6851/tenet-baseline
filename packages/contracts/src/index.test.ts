@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   IntentProposalSchema,
+  TenetConfirmationRequestSchema,
   TenetSchema,
   ValidationRunIngestionSchema,
 } from "./index.js";
@@ -176,6 +177,36 @@ describe("TenetSchema", () => {
         model: "gpt-5.6-terra",
         requiresHumanConfirmation: false,
       }),
+    ).toThrow();
+  });
+
+  it("requires a separate explicit confirmation before a draft proposal can activate", () => {
+    const proposal = {
+      sourceIntent: architectureTenet.description,
+      proposedTenet: {
+        name: architectureTenet.name,
+        description: architectureTenet.description,
+        type: architectureTenet.type,
+        severity: architectureTenet.severity,
+        enforcement: architectureTenet.enforcement,
+        status: "draft" as const,
+        scope: architectureTenet.scope,
+        constraint: architectureTenet.constraint,
+      },
+      rationale: "The requested boundary maps to a direct dependency rule.",
+      assumptions: [],
+      model: "gpt-5.6-terra",
+      requiresHumanConfirmation: true as const,
+    };
+
+    expect(
+      TenetConfirmationRequestSchema.parse({ proposal, confirmed: true }),
+    ).toMatchObject({
+      proposal: { proposedTenet: { status: "draft" } },
+      confirmed: true,
+    });
+    expect(() =>
+      TenetConfirmationRequestSchema.parse({ proposal, confirmed: false }),
     ).toThrow();
   });
 });

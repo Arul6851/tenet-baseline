@@ -523,6 +523,21 @@ export type NaturalLanguageTenetInput = z.infer<
   typeof NaturalLanguageTenetInputSchema
 >;
 
+/**
+ * A client can ask for an interpretation, but repository identity is supplied
+ * by the server from the route and persisted control-plane record. This keeps
+ * an AI request from selecting an arbitrary repository.
+ */
+export const CreateTenetProposalRequestSchema = z
+  .object({
+    intent: z.string().min(1).max(10_000),
+    requestedScope: z.array(z.string().min(1)).max(50).optional(),
+  })
+  .strict();
+export type CreateTenetProposalRequest = z.infer<
+  typeof CreateTenetProposalRequestSchema
+>;
+
 export const IntentProposalSchema = z
   .object({
     sourceIntent: z.string().min(1),
@@ -534,6 +549,42 @@ export const IntentProposalSchema = z
   })
   .strict();
 export type IntentProposal = z.infer<typeof IntentProposalSchema>;
+
+/** A proposal response deliberately contains no active or persisted Tenet. */
+export const TenetProposalResponseSchema = z
+  .object({ proposal: IntentProposalSchema })
+  .strict();
+export type TenetProposalResponse = z.infer<typeof TenetProposalResponseSchema>;
+
+/**
+ * Confirmation is a distinct, explicit operation. The submitted AI proposal
+ * remains a draft here; only the server-side confirmation service may turn it
+ * into a persisted active control-plane Tenet.
+ */
+export const TenetConfirmationRequestSchema = z
+  .object({
+    proposal: IntentProposalSchema,
+    confirmed: z.literal(true),
+  })
+  .strict();
+export type TenetConfirmationRequest = z.infer<
+  typeof TenetConfirmationRequestSchema
+>;
+
+/**
+ * The local CLI remains local-first and reads repository configuration. A
+ * control-plane confirmation therefore never silently changes local checks.
+ */
+export const TenetConfirmationResponseSchema = z
+  .object({
+    tenet: TenetSchema,
+    created: z.boolean(),
+    localRepositorySyncRequired: z.literal(true),
+  })
+  .strict();
+export type TenetConfirmationResponse = z.infer<
+  typeof TenetConfirmationResponseSchema
+>;
 
 export const DeveloperExplanationRequestSchema = z
   .object({
@@ -555,6 +606,14 @@ export const DeveloperExplanationSchema = z
   })
   .strict();
 export type DeveloperExplanation = z.infer<typeof DeveloperExplanationSchema>;
+
+/** AI explanations are separate from the deterministic violation record. */
+export const ViolationExplanationResponseSchema = z
+  .object({ explanation: DeveloperExplanationSchema })
+  .strict();
+export type ViolationExplanationResponse = z.infer<
+  typeof ViolationExplanationResponseSchema
+>;
 
 /**
  * AI services may interpret intent or explain evidence, but these interfaces

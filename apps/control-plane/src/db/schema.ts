@@ -59,7 +59,7 @@ export const tenets = pgTable(
     repositoryId: uuid("repository_id")
       .notNull()
       .references(() => repositories.id, { onDelete: "cascade" }),
-    /** Stable ID from the repository's Tenet configuration. */
+    /** Stable ID from repository configuration or a confirmed control-plane policy. */
     externalId: text("external_id").notNull(),
     name: text("name").notNull(),
     description: text("description").notNull(),
