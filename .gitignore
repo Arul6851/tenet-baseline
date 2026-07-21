@@ -18,6 +18,7 @@ secrets/
 .vercel/
 .turbo/
 .tenet-demo/
+.tenet/control-plane.json
 *.log
 npm-debug.log*
 

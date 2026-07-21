@@ -1,4 +1,5 @@
 import { resolve } from "node:path";
+import { randomUUID } from "node:crypto";
 
 import {
   defaultTenetConfigPath,
@@ -8,6 +9,13 @@ import {
 } from "@tenet/engine";
 import type { TenetEvaluation, Violation } from "@tenet/contracts";
 
+import {
+  loadControlPlaneConnectionConfig,
+  synchronizeValidationRun,
+  type ControlPlaneConnectionLoader,
+  type ValidationRunSynchronizer,
+} from "./control-plane.js";
+
 export interface TerminalOutput {
   log(message: string): void;
   error(message: string): void;
@@ -16,6 +24,8 @@ export interface TerminalOutput {
 export interface CheckCommandOptions {
   repositoryPath?: string;
   configPath?: string;
+  connectionLoader?: ControlPlaneConnectionLoader;
+  synchronizer?: ValidationRunSynchronizer;
 }
 
 const defaultTerminal: TerminalOutput = {
@@ -37,6 +47,9 @@ const displayDiscount = (value: string): string =>
 const isBlockingViolation = (violation: Violation): boolean =>
   violation.enforcement === "block_merge" &&
   (violation.status === "active" || violation.status === "blocked");
+
+const toSynchronizationErrorMessage = (error: unknown): string =>
+  error instanceof Error ? error.message : "Unknown synchronization error";
 
 const writeHeader = (
   result: TenetCheckResult,
@@ -200,6 +213,52 @@ const writeBlockingViolations = (
   }
 };
 
+/**
+ * Synchronization is intentionally best-effort telemetry. It runs only after
+ * the deterministic result has been rendered, and never changes that result.
+ */
+const synchronizeAfterLocalValidation = async (
+  input: {
+    repositoryRoot: string;
+    configuration: Awaited<ReturnType<typeof loadTenetConfiguration>>;
+    result: TenetCheckResult;
+    options: CheckCommandOptions;
+  },
+  terminal: TerminalOutput,
+): Promise<void> => {
+  terminal.log("");
+  terminal.log("Control plane:");
+
+  try {
+    const connection = await (
+      input.options.connectionLoader ?? loadControlPlaneConnectionConfig
+    )(input.repositoryRoot);
+    if (connection === undefined) {
+      terminal.log("- Not configured (local validation only).");
+      return;
+    }
+
+    const receipt = await (input.options.synchronizer ?? synchronizeValidationRun)(
+      {
+        idempotencyKey: randomUUID(),
+        connection,
+        repositoryRoot: input.repositoryRoot,
+        configuration: input.configuration,
+        result: input.result,
+      },
+    );
+    terminal.log(
+      receipt.validationRunId === undefined
+        ? "✓ Validation synchronized"
+        : `✓ Validation synchronized (${receipt.validationRunId})`,
+    );
+  } catch (error: unknown) {
+    terminal.log(
+      `! Synchronization unavailable: ${toSynchronizationErrorMessage(error)}`,
+    );
+  }
+};
+
 export const runCheckCommand = async (
   options: CheckCommandOptions,
   terminal: TerminalOutput = defaultTerminal,
@@ -223,18 +282,25 @@ export const runCheckCommand = async (
     writeEvaluations("Architecture Tenets", result.architectureEvaluations, terminal);
     writeEvaluations("Business Tenets", result.businessEvaluations, terminal);
 
+    let exitCode: number;
     if (result.status === "BLOCK") {
       writeBlockingViolations(result.violations, terminal);
       writeWarnings(result, terminal);
-      return 1;
+      exitCode = 1;
+    } else {
+      terminal.log("");
+      terminal.log("No blocking violations.");
+      writeWarnings(result, terminal);
+      terminal.log("");
+      terminal.log(result.status);
+      exitCode = 0;
     }
 
-    terminal.log("");
-    terminal.log("No blocking violations.");
-    writeWarnings(result, terminal);
-    terminal.log("");
-    terminal.log(result.status);
-    return 0;
+    await synchronizeAfterLocalValidation(
+      { repositoryRoot, configuration, result, options },
+      terminal,
+    );
+    return exitCode;
   } catch (error: unknown) {
     const message =
       error instanceof Error ? error.message : "Unexpected validation error";

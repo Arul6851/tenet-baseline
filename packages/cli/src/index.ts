@@ -1,12 +1,15 @@
 #!/usr/bin/env node
 
+import { resolve } from "node:path";
+
 import { Command } from "commander";
 
 import { runCheckCommand } from "./check.js";
+import { runConnectCommand } from "./control-plane.js";
 
 const foundationNotice = (command: string): void => {
   console.log(
-    `tenet ${command} is wired into the foundation. Deterministic repository validation is the next implementation phase.`,
+    `tenet ${command} is reserved for a later workflow. Use tenet check for the available deterministic validation path.`,
   );
 };
 
@@ -25,11 +28,31 @@ program
 program
   .command("connect")
   .description("Connect a repository to the Tenet control plane")
-  .action(() => foundationNotice("connect"));
+  .requiredOption("--url, --control-plane-url <url>", "Control-plane base URL")
+  .requiredOption("--repository <slug>", "Control-plane repository slug")
+  .option("--token <token>", "Optional control-plane bearer token")
+  .option("--repo <path>", "Repository root to connect", ".")
+  .action(
+    async (options: {
+      url: string;
+      repository: string;
+      token?: string;
+      repo: string;
+    }) => {
+      const invocationDirectory = process.env.INIT_CWD ?? process.cwd();
+      const exitCode = await runConnectCommand({
+        repositoryPath: resolve(invocationDirectory, options.repo),
+        controlPlaneUrl: options.url,
+        repositorySlug: options.repository,
+        ...(options.token === undefined ? {} : { token: options.token }),
+      });
+      process.exitCode = exitCode;
+    },
+  );
 
 program
   .command("check")
-  .description("Run a local, non-persisted validation")
+  .description("Run local validation and optionally synchronize the result")
   .option("--repo <path>", "Repository root to validate", ".")
   .option("--config <path>", "Path to a Tenet configuration file")
   .action(async (options: { repo: string; config?: string }) => {
