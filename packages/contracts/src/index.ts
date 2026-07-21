@@ -61,6 +61,11 @@ export const ArchitectureEdgeSchema = z
   .strict();
 export type ArchitectureEdge = z.infer<typeof ArchitectureEdgeSchema>;
 
+const ArchitectureEdgeTupleSchema = z.tuple([
+  z.string().min(1),
+  z.string().min(1),
+]);
+
 export const ArchitectureConstraintSchema = z.discriminatedUnion("kind", [
   z
     .object({
@@ -113,6 +118,33 @@ export const TenetSchema = z
   .strict();
 export type Tenet = z.infer<typeof TenetSchema>;
 
+export const ArchitectureConfigurationSchema = z
+  .object({
+    modules: z.array(ArchitectureNodeSchema).min(1),
+    intendedEdges: z.array(ArchitectureEdgeTupleSchema).default([]),
+    allowedEdges: z.array(ArchitectureEdgeSchema).default([]),
+  })
+  .strict();
+export type ArchitectureConfiguration = z.infer<
+  typeof ArchitectureConfigurationSchema
+>;
+
+export const TenetConfigurationSchema = z
+  .object({
+    version: z.literal(1),
+    repository: z
+      .object({
+        id: z.string().min(1).optional(),
+        name: z.string().min(1),
+      })
+      .strict(),
+    tsconfig: z.string().min(1).default("tsconfig.json"),
+    architecture: ArchitectureConfigurationSchema,
+    tenets: z.array(TenetSchema).default([]),
+  })
+  .strict();
+export type TenetConfiguration = z.infer<typeof TenetConfigurationSchema>;
+
 export const TenetDraftSchema = TenetSchema.omit({ id: true }).extend({
   status: z.literal("draft"),
 });
@@ -143,10 +175,24 @@ export const ViolationEvidenceSchema = z
   .strict();
 export type ViolationEvidence = z.infer<typeof ViolationEvidenceSchema>;
 
+export const ArchitectureViolationDetailsSchema = z
+  .object({
+    sourceModule: z.string().min(1),
+    targetModule: z.string().min(1),
+    expectedRoute: z.array(z.string().min(1)).min(2),
+    actualDependency: ArchitectureEdgeSchema,
+  })
+  .strict();
+export type ArchitectureViolationDetails = z.infer<
+  typeof ArchitectureViolationDetailsSchema
+>;
+
 export const ViolationSchema = z
   .object({
     fingerprint: z.string().min(1),
     tenetId: z.string().min(1),
+    tenetName: z.string().min(1).optional(),
+    tenetDescription: z.string().min(1).optional(),
     type: z.enum(["architecture", "semantic", "intent"]),
     severity: SeveritySchema,
     enforcement: EnforcementSchema,
@@ -156,6 +202,7 @@ export const ViolationSchema = z
     affectedFiles: z.array(z.string().min(1)).min(1),
     evidence: z.array(ViolationEvidenceSchema).min(1),
     architectureFinding: ArchitectureFindingKindSchema.optional(),
+    architecture: ArchitectureViolationDetailsSchema.optional(),
   })
   .strict();
 export type Violation = z.infer<typeof ViolationSchema>;

@@ -16,6 +16,28 @@
     "intendedEdges": [
       ["checkout", "gateway"],
       ["gateway", "database"]
+    ],
+    "allowedEdges": [
+      { "sourceModule": "checkout", "targetModule": "gateway" },
+      { "sourceModule": "gateway", "targetModule": "database" }
     ]
-  }
+  },
+  "tenets": [
+    {
+      "id": "checkout-persistence-boundary",
+      "name": "Checkout Persistence Boundary",
+      "description": "Checkout must access persistence through DatabaseGateway and must never directly depend on the database layer.",
+      "type": "architecture",
+      "severity": "critical",
+      "enforcement": "block_merge",
+      "status": "active",
+      "scope": ["checkout", "gateway", "database"],
+      "constraint": {
+        "kind": "forbid_direct_dependency",
+        "sourceModule": "checkout",
+        "targetModule": "database",
+        "expectedRoute": ["checkout", "gateway", "database"]
+      }
+    }
+  ]
 }
