@@ -8,6 +8,13 @@
       "when": 1784625893373,
       "tag": "0000_numerous_kabuki",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1784633721060,
+      "tag": "0001_complex_power_pack",
+      "breakpoints": true
     }
   ]
 }
