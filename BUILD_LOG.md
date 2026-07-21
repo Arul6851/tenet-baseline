@@ -651,3 +651,32 @@ This log records the actual development process and must not contain fabricated 
   verification. The exact stale Next.js workers were stopped and only the
   generated `apps/control-plane/.next` directory was cleared before a clean
   successful rebuild; no source or persisted data was removed.
+
+---
+
+## Local Control-Plane URL and CLI Connection Fix - 2026-07-22
+
+- Diagnosed a reported `401 Unauthorized` from `localhost:3000` as an
+  unrelated local service, not the Tenet control plane or PostgreSQL. The
+  running Next.js control plane had selected port `3001` because port `3000`
+  was already occupied.
+- Verified Tenet's `/api/health` response and all repository read endpoints on
+  port `3001`. The repository summary and health endpoint returned the
+  persisted `acme/commerce-platform` data, including the expected latest
+  100/100 health values and five health snapshots.
+- Fixed a CLI `tenet connect` option-mapping defect. Commander exposes the
+  paired `--url, --control-plane-url` option as `controlPlaneUrl`, while the
+  command previously read `url`, causing a valid URL to be discarded before
+  connection configuration was written.
+- Added a regression test that parses the real `--url` alias and verifies it
+  maps to the configured control-plane URL. The implementation retains a
+  fallback for programmatically constructed option objects.
+- Rechecked secret handling before commit: `.env` remains ignored and no
+  credentials were added to tracked files or this log.
+
+### Verification
+
+- `npm run lint` passed.
+- `npm run typecheck` passed across all workspaces.
+- `npm run test` passed: 20 test files and 82 tests.
+- The CLI package build passed.
