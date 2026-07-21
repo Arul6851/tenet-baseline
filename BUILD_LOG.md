@@ -587,3 +587,67 @@ This log records the actual development process and must not contain fabricated 
 - `npm run demo:semantic:conflict` retained PASS for baseline, Change A, and
   Change B, followed by its expected non-zero combined-state BLOCK at
   Architecture 100/100, Intent 0/100, and 35% over the 30% maximum.
+
+---
+
+## Public Landing Page and Final Product Polish - 2026-07-21
+
+- Replaced the root route with a public Tenet landing page and moved the
+  existing real repository Overview to `/overview`. The control-plane brand
+  and Overview navigation now target `/overview`; Architecture, Tenets,
+  Violations, Changes, Analytics, and API routes were preserved.
+- Built the landing around the supported product thesis: architecture and
+  business intent can be enforced even when code compiles and Git has no
+  textual conflict. The public hero links to the live control plane and to the
+  on-page workflow section.
+- Added visual demonstrations of the real deterministic scenarios:
+  Checkout-to-DatabaseGateway-to-Database versus the blocked direct
+  Checkout-to-Database dependency, and the 20% plus 15% customer-discount
+  conflict that reaches 35% against the 30% cap. The page labels the latter as
+  no textual Git conflict rather than claiming an automated Git merge.
+- Added a static, factual five-run demo-history strip matching the persisted
+  control-plane sequence: `PASS, BLOCK, PASS, BLOCK, PASS`, with Architecture
+  Health `100, 95, 100, 100, 100` and Intent Health
+  `100, 100, 100, 0, 100`.
+- Added the explicit GPT-5.6 safety narrative: AI proposes supported
+  structured Tenets and explains deterministic evidence; a human confirms
+  activation; deterministic validators own PASS/WARN/BLOCK and health.
+- Added capability links to the real control-plane pages, a technical pipeline
+  that separates the authoritative local validation path from GPT-5.6, and the
+  final public call to action. No new backend, persistence, or validator
+  behavior was added.
+- Extracted the existing brand mark into a shared component so the landing and
+  control plane use the same identity.
+- Added static-render regression coverage for landing anchors, the live-demo
+  route, required story sections, the exact demo health history, and the
+  control-plane route split. A test-only JSX runtime mismatch was fixed by
+  importing React explicitly in directly server-rendered components.
+
+### Visual and route verification
+
+- Inspected production landing screenshots at desktop and mobile widths. The
+  hero, scenario demonstrations, workflow, capability grid, and responsive
+  calls to action had no detected horizontal overflow.
+- Verified the “See How It Works” anchor navigates to the workflow section and
+  the real “View Live Demo” link opens `/overview`.
+- Verified `/`, `/overview`, `/architecture`, `/tenets`, `/violations`,
+  `/changes`, and `/analytics` all returned successful responses from the
+  production local server.
+- Confirmed the `/overview` control plane loaded persisted PostgreSQL-backed
+  data after its normal initial loading state, including the two 100/100 health
+  scores, resolved lifecycle records, health history, and validation activity.
+- Confirmed sidebar navigation reached the Architecture route, marked it
+  active, and loaded its two persisted dependency-graph views without an error
+  state.
+
+### Quality gates
+
+- `npm run lint` passed.
+- `npm run typecheck` passed across all workspaces.
+- `npm run test` passed: 20 test files and 81 tests.
+- `npm run build` passed for contracts, engine, CLI, and the Next.js control
+  plane. The first final build encountered an `EPERM` lock on the generated
+  OneDrive-managed `.next/server/app/overview` output after temporary local
+  verification. The exact stale Next.js workers were stopped and only the
+  generated `apps/control-plane/.next` directory was cleared before a clean
+  successful rebuild; no source or persisted data was removed.
