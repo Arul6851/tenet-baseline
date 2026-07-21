@@ -421,3 +421,85 @@ This log records the actual development process and must not contain fabricated 
 - `npm run test` passed: 11 test files and 48 tests.
 - `npm run build` passed for contracts, engine, CLI, and the Next.js control
   plane.
+
+---
+
+## Product Control Plane - 2026-07-21
+
+- Replaced the control-plane foundation screen with a repository-scoped product
+  shell for `acme/commerce-platform`. The desktop-first navigation includes
+  Overview, Architecture, Tenets, Violations, Changes, and Analytics, plus
+  repository identity and live control-plane status.
+- Built the Overview from the persisted repository summary, health snapshots,
+  validation history, and violation lifecycle APIs. It displays the real latest
+  Architecture Health and Intent Health scores, compact history charts, recent
+  validation activity, and resolved findings.
+- Added a reusable client-safe dashboard data mapping layer with strict parsing
+  for the five repository read APIs. It orders persisted health and validation
+  data chronologically and maps lifecycle state for product views. Its focused
+  tests cover health deltas, the five-run activity story, filters, and
+  malformed API responses.
+- Added an Architecture page that reads graph snapshots persisted with each
+  validation run. It can inspect the historical blocking drift run and renders
+  the declared Checkout-to-Gateway-to-Database route beside the actual graph,
+  highlighting the deterministic Checkout-to-Database edge only when that
+  architecture violation was recorded.
+- Added Tenets, Violations, Changes, and Analytics product views driven by the
+  repository APIs. They use persisted structured constraints, deterministic
+  evidence, lifecycle timestamps, health scores, and validation outcomes; no
+  second dashboard fixture dataset was added.
+- Added the server-side GPT-5.6 workflow boundaries: a proposal route accepts
+  natural-language intent and returns only a structured draft, a separate
+  explicit confirmation route activates a control-plane Tenet, and an evidence
+  explanation route loads the persisted deterministic violation server-side.
+  Confirmation returns `localRepositorySyncRequired: true`; it does not alter
+  local CLI enforcement or deterministic validator behavior.
+- Added the visible New Tenet proposal/review/confirmation UI and an optional
+  explanation action in violation detail. Both label the AI output as
+  non-authoritative. The client rejects malformed response shapes before
+  presenting them.
+- Added loading, API-error, empty, focus, keyboard, status-label, tablet, and
+  mobile states. The visual system uses CSS and SVG rather than adding a chart
+  or graph dependency.
+
+### Problems and debugging
+
+- The initial Architecture-page edge classifier treated every direct runtime
+  edge outside the narrow declared persistence route as drift. This incorrectly
+  included the legitimate `loyalty -> pricing` edge. The UI now highlights an
+  edge only when the selected historical validation is an architecture BLOCK
+  and its persisted deterministic violation evidence names that exact edge.
+- Headless Chrome stores extension files in its temporary profile. Local
+  screenshot verification initially made ESLint traverse those generated files
+  beneath `.tenet-demo`; that ignored local-tooling directory is now explicitly
+  excluded from the lint configuration.
+- The final secret audit found placeholder credentials in the Drizzle generate
+  fallback URI. The fallback now uses a credential-free local URI; `.env`
+  remains ignored and untracked.
+- `OPENAI_API_KEY` is not configured in the current environment. The live
+  proposal endpoint correctly returned `503 ai_unavailable`; no GPT proposal
+  or explanation was simulated and no extra Tenet was persisted during UI
+  verification.
+
+### Verification
+
+- A production `next start` control-plane process connected to the configured
+  AWS RDS data and returned repository APIs with `acme/commerce-platform`, five
+  validation runs, five health snapshots, two active Tenets, two resolved
+  logical violations, zero active violations, and latest scores of Architecture
+  100 and Intent 100.
+- Browser screenshots were inspected for Overview, Architecture, Tenets,
+  Violations, Changes, and Analytics at desktop width. The Architecture view
+  displayed the persisted Run 2 BLOCK with Architecture Health 95 and the
+  highlighted Checkout-to-Database dependency. Overview displayed the real
+  Architecture sequence `100, 95, 100, 100, 100` and Intent sequence
+  `100, 100, 100, 0, 100`.
+- Tablet and mobile Overview screenshots were inspected for responsive layout,
+  navigation, readable charts, and lack of material overflow.
+- `npm run lint` passed after the local-browser artifact exclusion.
+- `npm run typecheck` passed across the workspaces.
+- `npm run test` passed with 17 test files and 70 tests, including the existing
+  deterministic enforcement and persistence coverage plus new dashboard and
+  GPT-boundary tests.
+- `npm run build` passed for contracts, engine, CLI, and the Next.js control
+  plane.
