@@ -3,8 +3,16 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import type { ValidationRunIngestion } from "@tenet/contracts";
+
 import { runCheckCommand, type TerminalOutput } from "../packages/cli/src/check.ts";
-import { writeControlPlaneConnectionConfig } from "../packages/cli/src/control-plane.ts";
+import {
+  createValidationSyncPayload,
+  synchronizeValidationPayload,
+  writeControlPlaneConnectionConfig,
+  type ValidationRunSynchronizer,
+  type ValidationSyncContext,
+} from "../packages/cli/src/control-plane.ts";
 
 const workspaceRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const ecommerceFixture = join(workspaceRoot, "examples", "ecommerce");
@@ -27,6 +35,12 @@ interface Scenario {
   discountOverlay: "semantic-baseline" | "semantic-combined";
   architectureDrift: boolean;
   expectedExitCode: number;
+}
+
+interface CompletedScenario {
+  validationRunId: string;
+  synchronizationContext: ValidationSyncContext;
+  synchronizationPayload: ValidationRunIngestion;
 }
 
 const scenarios: readonly Scenario[] = [
@@ -62,6 +76,10 @@ const scenarios: readonly Scenario[] = [
   },
 ];
 
+const expectedArchitectureScores = [100, 95, 100, 100, 100] as const;
+const expectedIntentScores = [100, 100, 100, 0, 100] as const;
+const expectedStatuses = ["PASS", "BLOCK", "PASS", "BLOCK", "PASS"] as const;
+
 const asRecord = (value: unknown, label: string): Record<string, unknown> => {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new Error(`${label} must be a JSON object.`);
@@ -92,6 +110,31 @@ const requiredNumber = (value: unknown, label: string): number => {
   }
 
   return value;
+};
+
+const assertEqual = (
+  actual: unknown,
+  expected: unknown,
+  label: string,
+): void => {
+  if (actual !== expected) {
+    throw new Error(`${label}: expected ${String(expected)}, received ${String(actual)}.`);
+  }
+};
+
+const findViolationByType = (
+  violations: readonly unknown[],
+  type: "architecture" | "semantic",
+): Record<string, unknown> => {
+  const violation = violations
+    .map((candidate) => asRecord(candidate, "persisted violation"))
+    .find((candidate) => candidate.type === type);
+
+  if (!violation) {
+    throw new Error(`Expected a persisted ${type} violation.`);
+  }
+
+  return violation;
 };
 
 const writeStandaloneTsconfig = async (repositoryRoot: string): Promise<void> => {
@@ -154,17 +197,6 @@ const terminalFor = (lines: string[]): TerminalOutput => ({
   },
 });
 
-const synchronizationRunId = (lines: readonly string[]): string => {
-  const synchronizationLine = lines.find((line) =>
-    line.startsWith("✓ Validation synchronized ("),
-  );
-  const match = synchronizationLine === undefined
-    ? undefined
-    : /^✓ Validation synchronized \(([^)]+)\)$/u.exec(synchronizationLine);
-
-  return requiredString(match?.[1], "control-plane validation run id");
-};
-
 const readJson = async (url: string): Promise<unknown> => {
   const response = await fetch(url);
   if (!response.ok) {
@@ -182,13 +214,19 @@ const verifyPersistedHistory = async (
     `api/repositories/${repositorySlug}`,
     `${controlPlaneUrl}/`,
   ).toString();
-  const [summaryPayload, validationsPayload, violationsPayload, healthPayload] =
-    await Promise.all([
-      readJson(baseUrl),
-      readJson(`${baseUrl}/validation-runs`),
-      readJson(`${baseUrl}/violations`),
-      readJson(`${baseUrl}/health`),
-    ]);
+  const [
+    summaryPayload,
+    validationsPayload,
+    violationsPayload,
+    healthPayload,
+    tenetsPayload,
+  ] = await Promise.all([
+    readJson(baseUrl),
+    readJson(`${baseUrl}/validation-runs`),
+    readJson(`${baseUrl}/violations`),
+    readJson(`${baseUrl}/health`),
+    readJson(`${baseUrl}/tenets`),
+  ]);
   const summary = asRecord(summaryPayload, "repository summary");
   const validationRuns = asArray(
     asRecord(validationsPayload, "validation response").runs,
@@ -202,41 +240,200 @@ const verifyPersistedHistory = async (
     asRecord(healthPayload, "health response").snapshots,
     "health response snapshots",
   );
-
-  const persistedRunIds = new Set(
-    validationRuns.map((run) =>
-      requiredString(asRecord(run, "validation run").id, "validation run id"),
-    ),
+  const tenets = asArray(
+    asRecord(tenetsPayload, "tenet response").tenets,
+    "tenet response tenets",
   );
-  for (const runId of expectedRunIds) {
-    if (!persistedRunIds.has(runId)) {
-      throw new Error(`Expected persisted validation run ${runId} was not returned by the API.`);
-    }
-  }
 
-  if (requiredNumber(summary.activeViolationCount, "activeViolationCount") !== 0) {
-    throw new Error("Expected fixed final state to have zero active violations.");
+  if (new Set(expectedRunIds).size !== expectedRunIds.length) {
+    throw new Error("Expected demo run ids must be unique.");
   }
-  if (snapshots.length < expectedRunIds.length) {
-    throw new Error("Expected one persisted health snapshot for each demo run.");
+  if (validationRuns.length !== expectedRunIds.length) {
+    throw new Error(
+      `Expected exactly ${expectedRunIds.length} logical validation runs; received ${validationRuns.length}.`,
+    );
   }
-  if (violations.length < 2) {
-    throw new Error("Expected logical architectural and semantic violations to be persisted.");
+  if (snapshots.length !== expectedRunIds.length) {
+    throw new Error(
+      `Expected exactly ${expectedRunIds.length} health snapshots; received ${snapshots.length}.`,
+    );
   }
-
-  const latestSnapshot = asRecord(snapshots[0], "latest health snapshot");
+  if (tenets.length !== 2) {
+    throw new Error(`Expected exactly two persisted Tenets; received ${tenets.length}.`);
+  }
   if (
-    requiredNumber(latestSnapshot.architectureScore, "latest architecture score") !== 100 ||
-    requiredNumber(latestSnapshot.intentScore, "latest intent score") !== 100
+    !tenets.some((tenet) =>
+      asRecord(tenet, "persisted Tenet").name === "Checkout Persistence Boundary") ||
+    !tenets.some((tenet) =>
+      asRecord(tenet, "persisted Tenet").name === "Maximum Combined Discount")
   ) {
-    throw new Error("Expected the final fixed state to restore both health scores to 100.");
+    throw new Error("Read API did not return both active deterministic Tenets.");
   }
+
+  const runById = new Map<string, Record<string, unknown>>();
+  for (const run of validationRuns) {
+    const record = asRecord(run, "validation run");
+    const runId = requiredString(record.id, "validation run id");
+    if (runById.has(runId)) {
+      throw new Error(`Read API returned duplicate validation run ${runId}.`);
+    }
+    runById.set(runId, record);
+  }
+
+  const snapshotByRunId = new Map<string, Record<string, unknown>>();
+  for (const snapshot of snapshots) {
+    const record = asRecord(snapshot, "health snapshot");
+    const validationRunId = requiredString(
+      record.validationRunId,
+      "health snapshot validation run id",
+    );
+    if (snapshotByRunId.has(validationRunId)) {
+      throw new Error(`Read API returned duplicate health snapshot for ${validationRunId}.`);
+    }
+    snapshotByRunId.set(validationRunId, record);
+  }
+
+  const architectureHistory: number[] = [];
+  const intentHistory: number[] = [];
+  for (const [index, runId] of expectedRunIds.entries()) {
+    const run = runById.get(runId);
+    const snapshot = snapshotByRunId.get(runId);
+    if (!run || !snapshot) {
+      throw new Error(`Expected persisted validation run ${runId} was not returned by both APIs.`);
+    }
+
+    const architectureScore = requiredNumber(
+      run.architectureScore,
+      `run ${index + 1} architecture score`,
+    );
+    const intentScore = requiredNumber(run.intentScore, `run ${index + 1} intent score`);
+    assertEqual(run.status, expectedStatuses[index], `run ${index + 1} status`);
+    assertEqual(
+      architectureScore,
+      expectedArchitectureScores[index],
+      `run ${index + 1} architecture score`,
+    );
+    assertEqual(intentScore, expectedIntentScores[index], `run ${index + 1} intent score`);
+    assertEqual(
+      requiredNumber(snapshot.architectureScore, `snapshot ${index + 1} architecture score`),
+      expectedArchitectureScores[index],
+      `snapshot ${index + 1} architecture score`,
+    );
+    assertEqual(
+      requiredNumber(snapshot.intentScore, `snapshot ${index + 1} intent score`),
+      expectedIntentScores[index],
+      `snapshot ${index + 1} intent score`,
+    );
+    architectureHistory.push(architectureScore);
+    intentHistory.push(intentScore);
+  }
+
+  assertEqual(
+    requiredNumber(summary.activeViolationCount, "activeViolationCount"),
+    0,
+    "final active violation count",
+  );
+  const latestHealth = asRecord(summary.latestHealth, "repository latest health");
+  assertEqual(latestHealth.architectureScore, 100, "repository summary architecture score");
+  assertEqual(latestHealth.intentScore, 100, "repository summary intent score");
+
+  if (violations.length !== 2) {
+    throw new Error(`Expected exactly two logical violations; received ${violations.length}.`);
+  }
+  const architectureViolation = findViolationByType(violations, "architecture");
+  const semanticViolation = findViolationByType(violations, "semantic");
+  for (const [label, violation] of [
+    ["architectural", architectureViolation],
+    ["semantic", semanticViolation],
+  ] as const) {
+    assertEqual(violation.status, "resolved", `${label} violation lifecycle status`);
+    requiredString(violation.fingerprint, `${label} violation fingerprint`);
+    requiredString(violation.firstSeenAt, `${label} violation first seen timestamp`);
+    requiredString(violation.lastSeenAt, `${label} violation last seen timestamp`);
+    requiredString(violation.resolvedAt, `${label} violation resolved timestamp`);
+  }
+
+  const architectureDetails = asRecord(
+    asRecord(architectureViolation.details, "architectural violation details").architecture,
+    "architectural violation deterministic details",
+  );
+  assertEqual(architectureDetails.sourceModule, "checkout", "architectural source module");
+  assertEqual(architectureDetails.targetModule, "database", "architectural target module");
+  const architectureEvidence = asArray(
+    architectureViolation.evidence,
+    "architectural violation evidence",
+  );
+  if (!architectureEvidence.some((evidence) =>
+    asRecord(evidence, "architectural evidence").file === "src/checkout/checkout-service.ts")) {
+    throw new Error("Architectural violation did not retain checkout import evidence.");
+  }
+
+  const semanticDetails = asRecord(
+    asRecord(semanticViolation.details, "semantic violation details").semantic,
+    "semantic violation deterministic details",
+  );
+  assertEqual(semanticDetails.maximumPercent, 30, "semantic maximum discount");
+  assertEqual(semanticDetails.potentialPercent, 35, "semantic potential discount");
+  const contributingDiscounts = asArray(
+    semanticDetails.contributingDiscounts,
+    "semantic contributing discounts",
+  );
+  if (
+    contributingDiscounts.length !== 2 ||
+    !contributingDiscounts.some((discount) =>
+      asRecord(discount, "contributing discount").id === "holiday-discount") ||
+    !contributingDiscounts.some((discount) =>
+      asRecord(discount, "contributing discount").id === "premium-loyalty-discount")
+  ) {
+    throw new Error("Semantic violation did not retain both deterministic discount declarations.");
+  }
+  const semanticEvidence = asArray(semanticViolation.evidence, "semantic violation evidence");
+  if (
+    !semanticEvidence.some((evidence) =>
+      asRecord(evidence, "semantic evidence").file === "src/pricing/discount-policy.ts") ||
+    !semanticEvidence.some((evidence) =>
+      asRecord(evidence, "semantic evidence").file === "src/loyalty/premium-loyalty-discount.ts")
+  ) {
+    throw new Error("Semantic violation did not retain both declaration evidence files.");
+  }
+
+  const architectureDriftRun = runById.get(expectedRunIds[1] ?? "");
+  if (!architectureDriftRun) {
+    throw new Error("Expected persisted architectural-drift validation run.");
+  }
+  const graphSnapshot = asRecord(
+    architectureDriftRun.graphSnapshot,
+    "architectural-drift graph snapshot",
+  );
+  const graphEdges = asArray(graphSnapshot.edges, "architectural-drift graph edges");
+  if (!graphEdges.some((edge) => {
+    const record = asRecord(edge, "architectural-drift graph edge");
+    return record.sourceModule === "checkout" && record.targetModule === "database";
+  })) {
+    throw new Error("Architectural-drift graph snapshot is missing checkout -> database.");
+  }
+  const intendedArchitecture = asRecord(
+    graphSnapshot.intendedArchitecture,
+    "intended architecture graph snapshot",
+  );
+  const intendedEdges = asArray(intendedArchitecture.intendedEdges, "intended architecture edges");
+  if (
+    !intendedEdges.some((edge) =>
+      Array.isArray(edge) && edge[0] === "checkout" && edge[1] === "gateway") ||
+    !intendedEdges.some((edge) =>
+      Array.isArray(edge) && edge[0] === "gateway" && edge[1] === "database")
+  ) {
+    throw new Error("Graph snapshot did not retain the intended checkout -> gateway -> database route.");
+  }
+
+  console.log(`Architecture Health history: ${architectureHistory.join(" -> ")}`);
+  console.log(`Intent Health history: ${intentHistory.join(" -> ")}`);
 };
 
 const runScenario = async (
   scenario: Scenario,
   controlPlaneUrl: string,
-): Promise<string> => {
+): Promise<CompletedScenario> => {
   const repositoryRoot = await createScenarioRepository(scenario);
 
   try {
@@ -249,8 +446,21 @@ const runScenario = async (
     console.log(scenario.label);
     console.log("=".repeat(72));
     const lines: string[] = [];
+    let synchronizationContext: ValidationSyncContext | undefined;
+    let synchronizationPayload: ValidationRunIngestion | undefined;
+    let validationRunId: string | undefined;
+    const synchronizer: ValidationRunSynchronizer = async (context) => {
+      synchronizationContext = context;
+      synchronizationPayload = await createValidationSyncPayload(context);
+      const receipt = await synchronizeValidationPayload(
+        context,
+        synchronizationPayload,
+      );
+      validationRunId = receipt.validationRunId;
+      return receipt;
+    };
     const exitCode = await runCheckCommand(
-      { repositoryPath: repositoryRoot },
+      { repositoryPath: repositoryRoot, synchronizer },
       terminalFor(lines),
     );
 
@@ -259,11 +469,54 @@ const runScenario = async (
         `${scenario.label} returned ${exitCode}; expected ${scenario.expectedExitCode}.`,
       );
     }
+    if (
+      synchronizationContext === undefined ||
+      synchronizationPayload === undefined
+    ) {
+      throw new Error(`${scenario.label} did not create a synchronization context.`);
+    }
 
-    return synchronizationRunId(lines);
+    return {
+      validationRunId: requiredString(validationRunId, "control-plane validation run id"),
+      synchronizationContext,
+      synchronizationPayload,
+    };
   } finally {
     await rm(repositoryRoot, { recursive: true, force: true });
   }
+};
+
+const loadSingleResumableRun = async (controlPlaneUrl: string): Promise<string> => {
+  const baseUrl = new URL(
+    `api/repositories/${repositorySlug}`,
+    `${controlPlaneUrl}/`,
+  ).toString();
+  const payload = asRecord(
+    await readJson(`${baseUrl}/validation-runs`),
+    "resume validation response",
+  );
+  const runs = asArray(payload.runs, "resume validation runs");
+
+  if (runs.length !== 1) {
+    throw new Error(
+      `--resume requires exactly one already-persisted run; received ${runs.length}.`,
+    );
+  }
+
+  const run = asRecord(runs[0], "resumable validation run");
+  assertEqual(run.status, "PASS", "resumable run status");
+  assertEqual(
+    requiredNumber(run.architectureScore, "resumable architecture score"),
+    100,
+    "resumable architecture score",
+  );
+  assertEqual(
+    requiredNumber(run.intentScore, "resumable intent score"),
+    100,
+    "resumable intent score",
+  );
+
+  return requiredString(run.id, "resumable validation run id");
 };
 
 const main = async (): Promise<void> => {
@@ -273,13 +526,39 @@ const main = async (): Promise<void> => {
     "TENET_CONTROL_PLANE_URL",
   ).replace(/\/$/u, "");
   const runIds: string[] = [];
+  const resume = globalThis.process.argv.includes("--resume");
+  let scenariosToRun = scenarios;
 
-  for (const scenario of scenarios) {
-    runIds.push(await runScenario(scenario, controlPlaneUrl));
+  if (resume) {
+    runIds.push(await loadSingleResumableRun(controlPlaneUrl));
+    scenariosToRun = scenarios.slice(1);
+    console.log("Resuming from the already-persisted compliant Run 1.");
   }
+
+  let finalScenario: CompletedScenario | undefined;
+  for (const scenario of scenariosToRun) {
+    const completed = await runScenario(scenario, controlPlaneUrl);
+    runIds.push(completed.validationRunId);
+    finalScenario = completed;
+  }
+
+  if (finalScenario === undefined) {
+    throw new Error("Persisted history demo did not execute a synchronizable validation run.");
+  }
+
+  const retryReceipt = await synchronizeValidationPayload(
+    finalScenario.synchronizationContext,
+    finalScenario.synchronizationPayload,
+  );
+  assertEqual(
+    retryReceipt.validationRunId,
+    runIds.at(-1),
+    "idempotent validation run id",
+  );
 
   await verifyPersistedHistory(controlPlaneUrl, runIds);
   console.log("");
+  console.log("Idempotency verified: repeat synchronization retained one logical run.");
   console.log("Persisted history verified: 5 real validation runs, 2 resolved violations, 100/100 final health.");
 };
 

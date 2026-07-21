@@ -258,6 +258,50 @@ describe("tenet check", () => {
     );
   });
 
+  it("retries a transient delivery failure with the same validation payload", async () => {
+    const repositoryRoot = await createCompliantRepository();
+    await writeControlPlaneConnectionConfig(repositoryRoot, {
+      controlPlaneUrl: "http://localhost:3000",
+      repositorySlug: "acme/commerce-platform",
+    });
+    const requestBodies: string[] = [];
+    let attempts = 0;
+    vi.stubGlobal(
+      "fetch",
+      async (_input: string | URL | Request, init?: RequestInit) => {
+        attempts += 1;
+        requestBodies.push(String(init?.body));
+
+        if (attempts === 1) {
+          throw new TypeError("fetch failed");
+        }
+
+        return new Response(
+          JSON.stringify({
+            validationRunId: "bf550bf1-69c8-43db-8b30-d7866e7f3e39",
+            created: false,
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      },
+    );
+    const terminal = createCapturedTerminal();
+
+    const exitCode = await runCheckCommand(
+      { repositoryPath: repositoryRoot },
+      terminal.output,
+    );
+
+    expect(exitCode).toBe(0);
+    expect(attempts).toBe(2);
+    expect(requestBodies[1]).toBe(requestBodies[0]);
+    expect(ValidationRunIngestionSchema.parse(JSON.parse(requestBodies[0] ?? "{}")))
+      .toMatchObject({ status: "PASS" });
+    expect(terminal.lines.join("\n")).toContain(
+      "Validation synchronized (bf550bf1-69c8-43db-8b30-d7866e7f3e39)",
+    );
+  });
+
   it("keeps a local PASS when control-plane synchronization is unavailable", async () => {
     const repositoryRoot = await createCompliantRepository();
     await writeControlPlaneConnectionConfig(repositoryRoot, {

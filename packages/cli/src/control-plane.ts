@@ -13,7 +13,13 @@ import type { TenetCheckResult } from "@tenet/engine";
 
 export const CONTROL_PLANE_DIRECTORY = ".tenet";
 export const CONTROL_PLANE_CONFIG_FILE = "control-plane.json";
-export const CONTROL_PLANE_SYNC_TIMEOUT_MS = 5_000;
+/**
+ * Synchronization is post-validation telemetry, but it still needs enough
+ * time for a real database-backed control plane to complete its transaction.
+ * The local deterministic result remains authoritative if this expires.
+ */
+export const CONTROL_PLANE_SYNC_TIMEOUT_MS = 15_000;
+const CONTROL_PLANE_SYNC_ATTEMPTS = 2;
 
 export interface ControlPlaneConnectionConfig {
   version: 1;
@@ -333,9 +339,23 @@ export const createValidationSyncPayload = async (
 const validationRunsUrl = (controlPlaneUrl: string): string =>
   new URL("api/validation-runs", `${controlPlaneUrl}/`).toString();
 
-export const synchronizeValidationRun: ValidationRunSynchronizer = async (
-  context,
-) => {
+class ControlPlaneResponseError extends Error {}
+
+/**
+ * Fetch uses TypeError for network failures and DOMException for an aborted
+ * request. Retrying either once is safe because the client-generated
+ * idempotency key is part of the validated ingestion payload.
+ */
+const isRetryableDeliveryError = (error: unknown): boolean =>
+  error instanceof TypeError ||
+  (typeof DOMException !== "undefined" &&
+    error instanceof DOMException &&
+    (error.name === "AbortError" || error.name === "TimeoutError"));
+
+const postValidationRun = async (
+  context: ValidationSyncContext,
+  payload: ValidationRunIngestion,
+): Promise<ValidationSyncReceipt> => {
   const response = await fetch(validationRunsUrl(context.connection.controlPlaneUrl), {
     method: "POST",
     signal: AbortSignal.timeout(CONTROL_PLANE_SYNC_TIMEOUT_MS),
@@ -345,11 +365,13 @@ export const synchronizeValidationRun: ValidationRunSynchronizer = async (
         ? {}
         : { authorization: `Bearer ${context.connection.token}` }),
     },
-    body: JSON.stringify(await createValidationSyncPayload(context)),
+    body: JSON.stringify(payload),
   });
 
   if (!response.ok) {
-    throw new Error(`Control plane returned ${response.status} ${response.statusText}.`);
+    throw new ControlPlaneResponseError(
+      `Control plane returned ${response.status} ${response.statusText}.`,
+    );
   }
 
   const responseBody = ValidationRunIngestionResponseSchema.parse(
@@ -358,4 +380,38 @@ export const synchronizeValidationRun: ValidationRunSynchronizer = async (
   return {
     validationRunId: responseBody.validationRunId,
   };
+};
+
+/**
+ * Sends an already-validated telemetry payload. This supports callers that
+ * need to retry the exact completed validation event after its repository
+ * fixture is no longer available locally.
+ */
+export const synchronizeValidationPayload = async (
+  context: ValidationSyncContext,
+  payload: ValidationRunIngestion,
+): Promise<ValidationSyncReceipt> => {
+  for (let attempt = 1; attempt <= CONTROL_PLANE_SYNC_ATTEMPTS; attempt += 1) {
+    try {
+      return await postValidationRun(context, payload);
+    } catch (error: unknown) {
+      if (
+        attempt === CONTROL_PLANE_SYNC_ATTEMPTS ||
+        !isRetryableDeliveryError(error)
+      ) {
+        throw error;
+      }
+    }
+  }
+
+  throw new Error("Control-plane synchronization unexpectedly exhausted retries.");
+};
+
+export const synchronizeValidationRun: ValidationRunSynchronizer = async (
+  context,
+) => {
+  // Construct this once so a delivery retry sends the exact same completed
+  // validation run, including its idempotency key and deterministic evidence.
+  const payload = await createValidationSyncPayload(context);
+  return synchronizeValidationPayload(context, payload);
 };
